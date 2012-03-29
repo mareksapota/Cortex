@@ -1,0 +1,127 @@
+#!/usr/bin/env python
+
+# This should work in Python 2.7+ and Python 3.0+.
+
+from __future__ import print_function
+
+import argparse
+import subprocess
+
+#####
+# Build targets.  Modify this section to build new executables.
+targets = {
+    'backend' : {
+        'main' : 'Backend/backend',
+        'test' : [
+            'Backend/test/ValueTree_Test',
+            'Backend/test/Commit_Test'
+        ]
+    },
+    'middleware' : {
+        'main' : 'Middleware/middleware',
+        'test' : [
+            'Middleware/test/consumer',
+            'Middleware/test/producer'
+        ]
+    },
+    'telnet' : {
+        'main' : 'Utils/telnet'
+    },
+    'autobuild' : {
+        'main' : 'Utils/autobuild'
+    }
+}
+#####
+
+#####
+# Default values.
+# Target to build, 'all' and 'clean' are special.
+target = 'all'
+# Should we build tests?
+test = True
+# Should we clean up instead of building?
+clean = False
+# Compiler flags.
+flags = [
+    # Optimizations.
+    '-O2',
+    '-threaded',
+    # Slower compilation time.
+    #'-fllvm',
+    # Enable warning messages.
+    '-Wall',
+    '-fno-warn-unused-do-bind'
+]
+#####
+
+#####
+# This actually performs the build/cleanup.
+def build():
+    # Run a command.
+    def run(cmd):
+        print('## ' + cmd)
+        subprocess.check_call(cmd, shell = True, executable = '/bin/zsh')
+    # What executables should we build?
+    executables = []
+    for t in targets:
+        if target == 'all' or target == 'clean' or target == t:
+            if 'main' in targets[t]:
+                executables.append(targets[t]['main'])
+            if (test or target == 'clean') and 'test' in targets[t]:
+                executables.extend(targets[t]['test'])
+    if target == 'clean':
+        # Clean things made by a previous build.
+        for e in executables:
+            run("rm -f '{0}'".format(e))
+        run('rm -f **/*.o **/*.hi')
+    else:
+        # Build chosen executables.
+        for e in executables:
+            run("ghc -i.. --make {0} '{1}.hs'".format(' '.join(flags), e))
+#####
+
+#####
+# Command line options.
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    'target',
+    nargs = '?',
+    help = 'target to build (default all)'
+)
+parser.add_argument(
+    '--no-tests',
+    dest = 'no_tests',
+    action = 'store_true',
+    help = 'don\'t build tests'
+)
+parser.add_argument(
+    '--profile',
+    dest = 'profile',
+    action = 'store_true',
+    help = 'compile with profiling support'
+)
+#####
+
+#####
+# Apply the command line options.
+args = parser.parse_args()
+if args.target is not None:
+    target = args.target
+if args.no_tests:
+    test = False
+if args.profile:
+    # GHC will recompile everything if previous build didn't have profiling
+    # enabled.
+    flags.extend([
+        '-prof',
+        '-auto-all',
+        '-caf-all',
+        '-rtsopts'
+    ])
+#####
+
+try:
+    build()
+except:
+    # Don't write an ugly error message, the one from the compiler is enough.
+    pass
