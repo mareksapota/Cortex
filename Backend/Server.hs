@@ -31,14 +31,13 @@ import Adria.Backend.ValueStorage (ValueStorage)
 import qualified Adria.Backend.Storage as S
 import qualified Adria.Common.Random as Random
 import qualified Adria.Common.GZip as GZip
-import qualified Adria.Common.Middleware as M
 
 import qualified Adria.Config as Config
 
 -----
 
-type SEI a = StateT (MVar ValueStorage, String, Int) (ErrorT String IO) a
-type SSEI a = StateT (Handle, String, Int) (StateT (MVar ValueStorage, String, Int) (ErrorT String IO)) a
+type SEI a = StateT (MVar ValueStorage) (ErrorT String IO) a
+type SSEI a = StateT (Handle, String, Int) (StateT (MVar ValueStorage) (ErrorT String IO)) a
 
 -----
 
@@ -52,8 +51,6 @@ runServer serverPort storage = do
     printLocalLog $ "Server started on port " ++ (show serverPort)
     -- Start sync daemon.
     periodicTimer Config.syncTime (sync serverPort)
-    -- Get input from Middleware.
-    fork $ middlewareWatch
     forever $ catchError (acceptConnection socket) reportError
     where
         acceptConnection :: Socket -> SEI ()
@@ -222,34 +219,6 @@ saveValueStorage location = do
         reportError :: String -> SEI ()
         reportError e = do
             printLocalLog $ "Saving storage failed: " ++ e
-
------
-
-middlewareWatch :: SEI ()
-middlewareWatch = do
-    { (host, port) <- S.getMiddlewareHost
-    ; M.subscribe host port
-        [ "storage::set"
-        , "storage::delete"
-        , "storage::lookup"
-        ]
-        handler
-    } `catchError` reportError
-    where
-        reportError :: String -> SEI ()
-        reportError e = do
-            printLocalLog $ "Middleware watch connection error: " ++ e
-
-        handler :: [String] -> String -> SEI ()
-        handler ["storage::set"] msg = do
-            let (key, value) = split msg
-            S.silentSet key value
-        handler ["storage::delete"] msg = S.silentDelete msg
-        handler ["storage::lookup"] msg = return ()
-        handler _ _ = throwError "This shouldn't have happened"
-
-        split :: String -> (String, String)
-        split msg = (takeWhile (/= ' ') msg, tail $ dropWhile (/= ' ') msg)
 
 -----
 

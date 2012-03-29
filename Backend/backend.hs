@@ -16,10 +16,6 @@ makeArgs :: ErrorT String IO CmdArgs
 makeArgs = execOptParseT $ do
     addOption ["-p", "--port"] "port"
         "Backend will listen on this port (default is 8205)"
-    addOption ["--bus-port"] "bus-port"
-        "Middleware server port (default is 9426)"
-    addOption ["--bus-host"] "bus-host"
-        "Middleware server location (default is localhost)"
     addOption ["-s", "--storage"] "storage"
         "Backend storage location (no storage is used by default)"
 
@@ -45,8 +41,5 @@ main' = do
     options <- makeArgs
     args <- OptParse.evalArgs options
     (port :: Int) <- OptParse.getOptionWithDefault args "port" 8205
-    (busPort :: Int) <- OptParse.getOptionWithDefault args "bus-port" 9426
-    (busHost :: String) <- OptParse.getOptionWithDefault
-        args "bus-host" "localhost"
     (storage :: Maybe String) <- OptParse.getOption args "storage"
-    runVS busHost busPort (runServer port storage)
+    runVS (runServer port storage)

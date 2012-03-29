@@ -2,9 +2,7 @@
 
 module Adria.Backend.Storage
     ( set
-    , silentSet
     , delete
-    , silentDelete
     , lookup
     , lookupAll
     , lookupAllWhere
@@ -14,7 +12,6 @@ module Adria.Backend.Storage
     , Adria.Backend.Storage.show
     , Adria.Backend.Storage.read
     , runVS
-    , getMiddlewareHost
     ) where
 
 -----
@@ -28,80 +25,40 @@ import Data.Maybe (fromJust, isNothing, listToMaybe)
 
 import Adria.Backend.ValueStorage (ValueStorage)
 import qualified Adria.Backend.ValueStorage as VS
-import Adria.Backend.Commit
-    ( Commit (Commit)
-    , Operation (Set, Delete)
-    )
+import Adria.Backend.Commit (Commit)
 import qualified Adria.Backend.Commit as Commit
-import qualified Adria.Common.Middleware as M
 
 -----
 
-type MVS m a = (MonadState (MVar ValueStorage, String, Int) m, MonadBase IO m) => m a
+type MVS m a = (MonadState (MVar ValueStorage) m, MonadBase IO m) => m a
 
 -----
 
-runVS :: (Monad m, MonadBase IO m) => String -> Int ->
-    StateT (MVar ValueStorage, String, Int) m a -> m ()
-runVS host port s = do
+runVS :: (Monad m, MonadBase IO m) => StateT (MVar ValueStorage) m a -> m ()
+runVS s = do
     mv <- newMVar VS.empty
-    runStateT s (mv, host, port)
+    runStateT s mv
     return ()
 
 -----
 
 getVS :: MVS m ValueStorage
-getVS = do
-    (mv, _, _) <- get
-    takeMVar mv
+getVS = get >>= takeMVar
 
 -----
 
 putVS :: ValueStorage -> MVS m ()
-putVS vs = do
-    (mv, _, _) <- get
-    putMVar mv vs
+putVS vs = get >>= (flip putMVar) vs
 
 -----
 
-getMiddlewareHost :: MVS m (String, Int)
-getMiddlewareHost = do
-    (_, host, port) <- get
-    return (host, port)
-
------
--- Notifies Middleware about an operation.
-
-notify :: (MonadIO m, MonadError String m) => [String] -> String -> MVS m ()
-notify topics msg = do
-    (host, port) <- getMiddlewareHost
-    M.send host port topics msg
+set ::  (MonadIO m) => String -> String -> MVS m ()
+set key value = getVS >>= VS.set key value >>= putVS
 
 -----
 
-set :: (MonadIO m, MonadError String m) => String -> String -> MVS m ()
-set key value = do
-    silentSet key value
-    notify ["storage::announce::set", "storage::set::" ++ key] key
-
------
--- `set` without Middleware notification.
-
-silentSet :: (MonadIO m) => String -> String -> MVS m ()
-silentSet key value = getVS >>= VS.set key value >>= putVS
-
------
-
-delete :: (MonadIO m, MonadError String m) => String -> MVS m ()
-delete key = do
-    silentDelete key
-    notify ["storage::announce::delete", "storage::delete::" ++ key] key
-
------
--- `delete` witout Middleware notification.
-
-silentDelete :: (MonadIO m) => String -> MVS m ()
-silentDelete key = getVS >>= VS.delete key >>= putVS
+delete :: (MonadIO m) => String -> MVS m ()
+delete key = getVS >>= VS.delete key >>= putVS
 
 -----
 
@@ -133,18 +90,10 @@ lookupAllWhere key f = do
 
 -----
 
-insert :: (MonadIO m, MonadError String m) => Commit -> MVS m ()
+insert :: Commit -> MVS m ()
 insert c = do
     vs <- getVS
-    let (vs', commits) = VS.insert c vs
-    putVS $ vs'
-    forM_ commits announce
-
-announce :: (MonadIO m, MonadError String m) => Commit -> MVS m ()
-announce (Commit key (Set _) _ _) =
-    notify ["storage::announce::set", "storage::set::" ++ key] key
-announce (Commit key (Delete) _ _) =
-    notify ["storage::announce::delete", "storage::delete::" ++ key] key
+    putVS $ VS.insert c vs
 
 -----
 
