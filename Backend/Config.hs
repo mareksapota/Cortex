@@ -1,4 +1,4 @@
-module Adria.Config where
+module Adria.Backend.Config where
 
 host :: String
 host = "127.0.0.1"

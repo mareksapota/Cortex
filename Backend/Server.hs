@@ -32,7 +32,7 @@ import qualified Adria.Backend.Storage as S
 import qualified Adria.Common.Random as Random
 import qualified Adria.Common.GZip as GZip
 
-import qualified Adria.Config as Config
+import qualified Adria.Backend.Config as Config
 
 -----
 
