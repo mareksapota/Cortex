@@ -1,11 +1,11 @@
 = Platform support =
-Adria should run on any UNIX-like OS, especially any GNU based OS should be
+Cortex should run on any UNIX-like OS, especially any GNU based OS should be
 fine.
 
 = Compilation =
 
 == Haskell ==
-Adria needs a compiler implementing Haskell 2010 standard and several language
+Cortex needs a compiler implementing Haskell 2010 standard and several language
 extensions (grep for "LANGUAGE" in sources to get a list).  GHC 7.4 is
 recommended, but other compiler could probably be used.  Other compilers were
 not tested and are not supported though.
@@ -19,7 +19,7 @@ interpreter/compiler.
 directory, so currently the shell is hard set to `/bin/zsh`.
 
 == Helpers ==
-`Utils/autobuild` will rebuild Adria when any Haskell source file changes, it
+`Utils/autobuild` will rebuild Cortex when any Haskell source file changes, it
 can be used similarly to autobuild functionality from IDEs like Eclipse.
 
 = Usage =

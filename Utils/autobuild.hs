@@ -4,14 +4,13 @@ import Control.Monad
 import System.Cmd
 import System.IO
 
--- This tool will recompile Adria if any Haskell file is changed in watched
+-- This tool will recompile Cortex if any Haskell file is changed in watched
 -- directories.
 
 toWatch :: [String]
 toWatch =
-    [ "."
-    , "Backend"
-    , "Backend/test"
+    [ "Miranda"
+    , "Miranda/test"
     , "Common"
     , "Utils"
     ]

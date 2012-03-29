@@ -1,7 +1,7 @@
 import Prelude hiding (lookup)
 import Test.HUnit
 
-import Adria.Backend.ValueTree
+import Cortex.Miranda.ValueTree
 
 -----
 -- Insert/delete tests.

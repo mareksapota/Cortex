@@ -1,6 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Adria.Backend.Server
+module Cortex.Miranda.Server
     ( runServer
     ) where
 
@@ -23,16 +23,16 @@ import Data.Time.Clock (getCurrentTime)
 import System.Locale (defaultTimeLocale)
 import Data.Maybe (fromMaybe, isJust, fromJust)
 
-import Adria.Common.ErrorIO
-import Adria.Common.Event
-import Adria.Backend.Commit (Commit)
-import qualified Adria.Backend.Commit as C
-import Adria.Backend.ValueStorage (ValueStorage)
-import qualified Adria.Backend.Storage as S
-import qualified Adria.Common.Random as Random
-import qualified Adria.Common.GZip as GZip
+import Cortex.Common.ErrorIO
+import Cortex.Common.Event
+import Cortex.Miranda.Commit (Commit)
+import qualified Cortex.Miranda.Commit as C
+import Cortex.Miranda.ValueStorage (ValueStorage)
+import qualified Cortex.Miranda.Storage as S
+import qualified Cortex.Common.Random as Random
+import qualified Cortex.Common.GZip as GZip
 
-import qualified Adria.Backend.Config as Config
+import qualified Cortex.Miranda.Config as Config
 
 -----
 

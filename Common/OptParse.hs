@@ -1,6 +1,6 @@
 {-# LANGUAGE DefaultSignatures, TypeSynonymInstances, FlexibleInstances, FlexibleContexts #-}
 
-module Adria.Common.OptParse
+module Cortex.Common.OptParse
     ( CmdSwitch
     , CmdName
     , CmdHelp

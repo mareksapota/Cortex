@@ -4,13 +4,13 @@ import Control.Monad.Error (runErrorT, ErrorT)
 import System.IO
 import Control.Concurrent.Lifted
 
-import Adria.Common.OptParse (CmdArgs)
-import Adria.Common.MonadOptParse
-import qualified Adria.Common.OptParse as OptParse
-import Adria.Common.ErrorIO
+import Cortex.Common.OptParse (CmdArgs)
+import Cortex.Common.MonadOptParse
+import qualified Cortex.Common.OptParse as OptParse
+import Cortex.Common.ErrorIO
 
-import Adria.Backend.Storage (runVS)
-import Adria.Backend.Server (runServer)
+import Cortex.Miranda.Storage (runVS)
+import Cortex.Miranda.Server (runServer)
 
 makeArgs :: ErrorT String IO CmdArgs
 makeArgs = execOptParseT $ do

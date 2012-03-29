@@ -1,6 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 
-module Adria.Common.Event
+module Cortex.Common.Event
     ( timer
     , periodicTimer
     ) where

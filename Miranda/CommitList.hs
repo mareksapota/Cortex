@@ -1,4 +1,4 @@
-module Adria.Backend.CommitList
+module Cortex.Miranda.CommitList
     ( CommitList
     , empty
     , insert
@@ -12,8 +12,8 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.List (partition)
 
-import Adria.Backend.Commit (Commit)
-import qualified Adria.Backend.Commit as Commit
+import Cortex.Miranda.Commit (Commit)
+import qualified Cortex.Miranda.Commit as Commit
 
 -----
 

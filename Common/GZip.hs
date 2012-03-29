@@ -1,4 +1,4 @@
-module Adria.Common.GZip
+module Cortex.Common.GZip
     ( pack
     , unpack
     ) where

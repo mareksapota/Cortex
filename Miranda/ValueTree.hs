@@ -1,4 +1,4 @@
-module Adria.Backend.ValueTree
+module Cortex.Miranda.ValueTree
     ( ValueTree
     , empty
     , lookup
@@ -15,8 +15,8 @@ import Prelude hiding (lookup)
 import Data.Map (Map)
 import qualified Data.Map as Map
 
-import Adria.Backend.Commit (Commit (Commit))
-import qualified Adria.Backend.Commit as Commit
+import Cortex.Miranda.Commit (Commit (Commit))
+import qualified Cortex.Miranda.Commit as Commit
 
 -----
 

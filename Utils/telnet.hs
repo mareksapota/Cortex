@@ -10,10 +10,10 @@ import Control.Monad.Trans (liftIO)
 import System.IO
 import Data.Maybe (isNothing, fromJust)
 
-import Adria.Common.ErrorIO
-import Adria.Common.MonadOptParse
-import Adria.Common.OptParse (CmdArgs)
-import qualified Adria.Common.OptParse as OptParse
+import Cortex.Common.ErrorIO
+import Cortex.Common.MonadOptParse
+import Cortex.Common.OptParse (CmdArgs)
+import qualified Cortex.Common.OptParse as OptParse
 
 makeArgs :: ErrorT String IO CmdArgs
 makeArgs = execOptParseT $ do

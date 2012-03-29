@@ -1,7 +1,7 @@
 import Prelude hiding (lookup)
 import Test.HUnit
 
-import Adria.Backend.Commit
+import Cortex.Miranda.Commit
 
 -----
 -- Equality tests.

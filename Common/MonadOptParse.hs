@@ -1,6 +1,6 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
-module Adria.Common.MonadOptParse
+module Cortex.Common.MonadOptParse
     ( OptParseT
     , OptParse
     , MonadOptParse
@@ -12,7 +12,7 @@ module Adria.Common.MonadOptParse
 import Control.Monad.Identity
 import Control.Monad.State
 
-import qualified Adria.Common.OptParse as P
+import qualified Cortex.Common.OptParse as P
 
 -- Monad for easy argument adding.
 

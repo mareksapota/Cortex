@@ -1,6 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 
-module Adria.Common.ErrorIO
+module Cortex.Common.ErrorIO
     ( iSetNewlineMode
     , iSetBuffering
     , iGetLine

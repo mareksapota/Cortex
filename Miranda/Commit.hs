@@ -1,4 +1,4 @@
-module Adria.Backend.Commit
+module Cortex.Miranda.Commit
     ( Commit (Commit)
     , Operation (Set, Delete)
     , Hash

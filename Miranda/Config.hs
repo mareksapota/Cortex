@@ -1,4 +1,4 @@
-module Adria.Backend.Config where
+module Cortex.Miranda.Config where
 
 host :: String
 host = "127.0.0.1"

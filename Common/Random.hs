@@ -1,4 +1,4 @@
-module Adria.Common.Random
+module Cortex.Common.Random
     ( generate
     ) where
 

@@ -10,11 +10,11 @@ import subprocess
 #####
 # Build targets.  Modify this section to build new executables.
 targets = {
-    'backend' : {
-        'main' : 'Backend/backend',
+    'miranda' : {
+        'main' : 'Miranda/miranda',
         'test' : [
-            'Backend/test/ValueTree_Test',
-            'Backend/test/Commit_Test'
+            'Miranda/test/ValueTree_Test',
+            'Miranda/test/Commit_Test'
         ]
     },
     'telnet' : {

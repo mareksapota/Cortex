@@ -1,4 +1,4 @@
-module Adria.Backend.ValueStorage
+module Cortex.Miranda.ValueStorage
     ( ValueStorage
     , empty
     , set
@@ -16,12 +16,12 @@ module Adria.Backend.ValueStorage
 import Prelude hiding (lookup)
 import Control.Monad.Trans (MonadIO)
 
-import Adria.Backend.ValueTree (ValueTree)
-import qualified Adria.Backend.ValueTree as VT
-import Adria.Backend.CommitList (CommitList)
-import qualified Adria.Backend.CommitList as CL
-import Adria.Backend.Commit (Commit)
-import qualified Adria.Backend.Commit as Commit
+import Cortex.Miranda.ValueTree (ValueTree)
+import qualified Cortex.Miranda.ValueTree as VT
+import Cortex.Miranda.CommitList (CommitList)
+import qualified Cortex.Miranda.CommitList as CL
+import Cortex.Miranda.Commit (Commit)
+import qualified Cortex.Miranda.Commit as Commit
 
 -----
 

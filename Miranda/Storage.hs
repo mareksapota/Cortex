@@ -1,6 +1,6 @@
 {-# LANGUAGE Rank2Types, FlexibleContexts #-}
 
-module Adria.Backend.Storage
+module Cortex.Miranda.Storage
     ( set
     , delete
     , lookup
@@ -9,8 +9,8 @@ module Adria.Backend.Storage
     , insert
     , member
     , getCommits
-    , Adria.Backend.Storage.show
-    , Adria.Backend.Storage.read
+    , Cortex.Miranda.Storage.show
+    , Cortex.Miranda.Storage.read
     , runVS
     ) where
 
@@ -23,10 +23,10 @@ import Control.Monad.Base (MonadBase)
 import Control.Concurrent.Lifted
 import Data.Maybe (fromJust, isNothing, listToMaybe)
 
-import Adria.Backend.ValueStorage (ValueStorage)
-import qualified Adria.Backend.ValueStorage as VS
-import Adria.Backend.Commit (Commit)
-import qualified Adria.Backend.Commit as Commit
+import Cortex.Miranda.ValueStorage (ValueStorage)
+import qualified Cortex.Miranda.ValueStorage as VS
+import Cortex.Miranda.Commit (Commit)
+import qualified Cortex.Miranda.Commit as Commit
 
 -----
 
