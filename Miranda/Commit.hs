@@ -13,8 +13,8 @@ import Control.Monad.Trans (MonadIO, liftIO)
 import Data.Time.Format (formatTime)
 import Data.Time.Clock (getCurrentTime)
 import System.Locale (defaultTimeLocale)
-import Data.ByteString.Lazy.Char8 (pack)
-import Data.Digest.Pure.SHA (sha1)
+
+import qualified Cortex.Common.Sha1 as Sha1
 
 -----
 
@@ -62,11 +62,8 @@ rebase' :: String -> Commit -> Commit
 rebase' parentHash (Commit key op _ ts) = Commit key op newHash ts
     where
         newHash :: Hash
-        newHash = makeHash $ parentHash ++ " " ++ key ++ " " ++
+        newHash = Sha1.hash $ parentHash ++ " " ++ key ++ " " ++
             (show op) ++ " " ++ ts
-
-        makeHash :: String -> Hash
-        makeHash = show . sha1 . pack
 
 -----
 

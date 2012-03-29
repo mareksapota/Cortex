@@ -21,7 +21,7 @@ import Control.Concurrent.Lifted
 import Data.Time.Format (formatTime)
 import Data.Time.Clock (getCurrentTime)
 import System.Locale (defaultTimeLocale)
-import Data.Maybe (fromMaybe, isJust, fromJust)
+import Data.Maybe (fromMaybe, isJust, isNothing, fromJust)
 
 import Cortex.Common.ErrorIO
 import Cortex.Common.Event
@@ -31,6 +31,7 @@ import Cortex.Miranda.ValueStorage (ValueStorage)
 import qualified Cortex.Miranda.Storage as S
 import qualified Cortex.Common.Random as Random
 import qualified Cortex.Common.GZip as GZip
+import qualified Cortex.Common.Sha1 as Sha1
 
 import qualified Cortex.Miranda.Config as Config
 
@@ -88,20 +89,29 @@ chooseConnectionMode :: String -> SSEI ()
 chooseConnectionMode "set" = do
     key <- getLine
     value <- getLine
-    printLog $ "set " ++ key
+    printLog $ "set: " ++ key
     lift $ S.set key value
     closeConnection
 
 chooseConnectionMode "get" = do
     key <- getLine
-    printLog $ "get " ++ key
+    printLog $ "get: " ++ key
     value <- lift $ S.lookup key
     putLine $ show value
     closeConnection
 
+chooseConnectionMode "get hash" = do
+    key <- getLine
+    printLog $ "get hash: " ++ key
+    value <- lift $ S.lookup key
+    if (isNothing value)
+        then putLine $ show value
+        else putLine $ show $ Just (Sha1.hash $ fromJust value)
+    closeConnection
+
 chooseConnectionMode "delete" = do
     key <- getLine
-    printLog $ "delete " ++ key
+    printLog $ "delete: " ++ key
     lift $ S.delete key
     closeConnection
 
