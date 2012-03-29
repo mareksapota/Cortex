@@ -13,8 +13,6 @@ toWatch =
     , "Backend"
     , "Backend/test"
     , "Common"
-    , "Middleware"
-    , "Middleware/test"
     , "Utils"
     ]
 

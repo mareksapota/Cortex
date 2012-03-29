@@ -17,13 +17,6 @@ targets = {
             'Backend/test/Commit_Test'
         ]
     },
-    'middleware' : {
-        'main' : 'Middleware/middleware',
-        'test' : [
-            'Middleware/test/consumer',
-            'Middleware/test/producer'
-        ]
-    },
     'telnet' : {
         'main' : 'Utils/telnet'
     },
