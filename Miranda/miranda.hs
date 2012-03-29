@@ -15,9 +15,9 @@ import Cortex.Miranda.Server (runServer)
 makeArgs :: ErrorT String IO CmdArgs
 makeArgs = execOptParseT $ do
     addOption ["-p", "--port"] "port"
-        "Backend will listen on this port (default is 8205)"
+        "Miranda will listen on this port (default is 8205)"
     addOption ["-s", "--storage"] "storage"
-        "Backend storage location (no storage is used by default)"
+        "Miranda storage location (no storage is used by default)"
 
 main :: IO ()
 main = do
