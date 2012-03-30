@@ -93,16 +93,16 @@ chooseConnectionMode "set" = do
     lift $ S.set key value
     closeConnection
 
-chooseConnectionMode "get" = do
+chooseConnectionMode "lookup" = do
     key <- getLine
-    printLog $ "get: " ++ key
+    printLog $ "lookup: " ++ key
     value <- lift $ S.lookup key
     putLine $ show value
     closeConnection
 
-chooseConnectionMode "get hash" = do
+chooseConnectionMode "lookup hash" = do
     key <- getLine
-    printLog $ "get hash: " ++ key
+    printLog $ "lookup hash: " ++ key
     value <- lift $ S.lookup key
     if (isNothing value)
         then putLine $ show value
@@ -146,11 +146,6 @@ clientSync = do
 
 sync :: Int -> SEI ()
 sync port = do
-    printLocalLog "Sync operation started"
-    -- TODO: remove, for debug only
-    x <- S.lookupAll ""
-    printLocalLog $ show x
-    --
     let selfHost = concat [Config.host, ":", show port]
     let key = "host::availability::" ++ selfHost
     self <- S.lookup key
@@ -161,7 +156,6 @@ sync port = do
     r <- Random.generate (0, (length hosts) - 1) Config.syncServers
     let syncHosts = map (\i -> hosts !! i) r
     forM_ syncHosts (performSync selfHost)
-    printLocalLog "Sync operation finished"
 
 performSync :: String -> String -> SEI ()
 performSync selfHost hostString = do
