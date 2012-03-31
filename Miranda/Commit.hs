@@ -20,14 +20,12 @@ module Cortex.Miranda.Commit
 
 import Control.Monad.Trans (MonadIO, liftIO)
 import Control.Monad.Error (MonadError, throwError)
-import Control.Monad.State (MonadState)
-import qualified Control.Monad.State as S
-import System.IO (IOMode (ReadMode, WriteMode), Handle)
+import Control.Monad.State (MonadState, get)
+import System.IO (IOMode (ReadMode, WriteMode, AppendMode), Handle)
 import Data.Time.Format (formatTime)
 import Data.Time.Clock (getCurrentTime)
 import System.Locale (defaultTimeLocale)
 import Data.ByteString.Lazy.Char8 (ByteString)
-import qualified Data.ByteString.Lazy.Char8 as BS
 
 import qualified Cortex.Common.Sha1 as Sha1
 import Cortex.Common.ErrorIO
@@ -82,9 +80,12 @@ time = do
 open :: (MonadIO m, MonadState String m, MonadError String m) =>
     Commit -> IOMode -> m Handle
 open (Commit key (Set hash) _ ts) mode = do
-    storage <- S.get
-    hdl <- iOpen (concat [storage, "/", key, ".", hash, ".", ts]) mode
-    return hdl
+    storage <- get
+    let location = concat [storage, "/", key, ".", hash, ".", ts]
+    -- Because of lazy IO saved commit might not be actually saved to disc and
+    -- opening it will result in a file already locked error.  To counter that,
+    -- this will wait until the lock is lifted.
+    iPersistentOpen location mode
 open (Commit _ Delete _ _) _ = throwError "Can't open delete commits"
 
 -----
@@ -99,6 +100,10 @@ set key value = do
     hdl <- open commit WriteMode
     ibPutStr hdl value
     iClose hdl
+    -- Lazy IO hack.  Make sure value is on disc before exiting.
+    hdl' <- open commit AppendMode
+    iClose hdl'
+    -- End of lazy IO hack.
     return commit
 
 -----
@@ -172,34 +177,39 @@ isSet commit = not $ isDelete commit
 -----
 
 toString :: (MonadIO m, MonadState String m, MonadError String m) =>
-    Commit -> m String
+    Commit -> m ByteString
 
-toString (Commit key Delete hash ts) = return $ show $
-    (key, Delete, hash, ts)
+toString (Commit key Delete hash ts) = iEncode $ (key, "delete", "", hash, ts)
 
 toString (Commit key op hash ts) = do
     value <- getValue (Commit key op hash ts)
-    return $ show $ (key, (Set (BS.unpack value)), hash, ts)
+    iEncode $ (key, "set", value, hash, ts)
 
 -----
 
 fromString :: (MonadIO m, MonadState String m, MonadError String m) =>
-    String -> m Commit
+    ByteString -> m Commit
 
 fromString s = do
-    let (tuple :: (Key, Operation, Hash, Timestamp)) = read s
+    (tuple :: (Key, String, ByteString, Hash, Timestamp)) <- iDecode s
     fromString' tuple
 
 fromString' :: (MonadIO m, MonadState String m, MonadError String m) =>
-    (Key, Operation, Hash, Timestamp) -> m Commit
+    (Key, String, ByteString, Hash, Timestamp) -> m Commit
 
-fromString' (key, Delete, hash, ts) =
+fromString' (key, "delete", _, hash, ts) =
     return $ Commit key Delete hash ts
 
-fromString' (key, (Set value), hash, ts) = do
-    let valueHash = Sha1.hash value
+fromString' (key, "set", value, hash, ts) = do
+    let valueHash = Sha1.bhash value
     let commit = Commit key (Set valueHash) hash ts
     hdl <- open commit WriteMode
-    iPutStr hdl value
+    ibPutStr hdl value
     iClose hdl
+    -- Lazy IO hack.  Make sure value is on disc before exiting.
+    hdl' <- open commit AppendMode
+    iClose hdl'
+    -- End of lazy IO hack.
     return commit
+
+fromString' _ = throwError "Couldn't parse the commit string"

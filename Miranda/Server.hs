@@ -130,25 +130,33 @@ chooseConnectionMode "sync" = do
     when (boff == fromMaybe boff remote) $ do
         lift $ S.set key (BS.pack "online")
         printLog $ concat ["Marked ", host, " online"]
-    clientSync
+    rest <- getRest
+    clientSync $ BS.lines rest
     printLog "sync request done"
     closeConnection
 
 chooseConnectionMode _ = throwError "Unknown connection mode"
 
-clientSync :: ConnectedMonadStack ()
-clientSync = do
-    hash <- getLine
+clientSync :: [ByteString] -> ConnectedMonadStack ()
+clientSync [] = throwError "Expected more lines"
+clientSync (h:t) = do
+    let hash = BS.unpack h
     when (hash /= "done") $ do
         member <- lift $ S.member hash
         if member
             then putLine "yes"
             else do
+                -- This has to be done before `clientSync'` starts waiting for a
+                -- new line.
                 putLine "no"
-                cs <- getLine
-                c <- lift $ C.fromString cs
-                lift $ S.insert c
-                clientSync
+                clientSync' t
+
+clientSync' :: [ByteString] -> ConnectedMonadStack ()
+clientSync' [] = throwError "Expected more lines"
+clientSync' (cs:t) = do
+    c <- lift $ C.fromString cs
+    lift $ S.insert c
+    clientSync t
 
 -----
 
@@ -200,7 +208,7 @@ performSync'' (c:commits) = do
     l <- getLine
     when (l == "no") $ do
         cs <- lift $ C.toString c
-        putLine cs
+        putbLine cs
         performSync'' commits
 
 -----
