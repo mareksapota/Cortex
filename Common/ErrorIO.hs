@@ -4,16 +4,11 @@ module Cortex.Common.ErrorIO
     ( iSetNewlineMode
     , iSetBuffering
     , iGetLine
-    , ibGetLine
-    , iGetChar
-    , ibGetContents
     , iOpen
     , iClose
     , iFlush
     , iPutStrLn
     , iPutStr
-    , ibPutStrLn
-    , ibPutStr
     , iListenOn
     , iAccept
     , iConnectTo
@@ -23,8 +18,6 @@ import Control.Monad.Trans (liftIO, MonadIO)
 import Control.Monad.Error (MonadError, throwError)
 import Control.Exception (try, IOException)
 import System.IO
-import Data.ByteString (ByteString)
-import qualified Data.ByteString.Char8 as BS
 import Network
 
 -- IO helpers that report errors through Error monad.
@@ -57,21 +50,6 @@ iGetLine a = ioReport $ hGetLine a
 
 -----
 
-ibGetLine :: (MonadError String m, MonadIO m) => Handle -> m ByteString
-ibGetLine a = ioReport $ BS.hGetLine a
-
------
-
-iGetChar :: (MonadError String m, MonadIO m) => Handle -> m Char
-iGetChar a = ioReport $ hGetChar a
-
------
-
-ibGetContents :: (MonadError String m, MonadIO m) => Handle -> m ByteString
-ibGetContents a = ioReport $ BS.hGetContents a
-
------
-
 iOpen :: (MonadError String m, MonadIO m) => FilePath -> IOMode -> m Handle
 iOpen a b = ioReport $ openFile a b
 
@@ -94,16 +72,6 @@ iPutStrLn a b = ioReport $ hPutStrLn a b
 
 iPutStr :: (MonadError String m, MonadIO m) => Handle -> String -> m ()
 iPutStr a b = ioReport $ hPutStr a b
-
------
-
-ibPutStrLn :: (MonadError String m, MonadIO m) => Handle -> ByteString -> m ()
-ibPutStrLn a b = ioReport $ BS.hPutStrLn a b
-
------
-
-ibPutStr :: (MonadError String m, MonadIO m) => Handle -> ByteString -> m ()
-ibPutStr a b = ioReport $ BS.hPutStr a b
 
 -----
 

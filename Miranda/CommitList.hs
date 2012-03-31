@@ -31,7 +31,7 @@ toList :: CommitList -> [Commit]
 toList (CommitList l _) = l
 
 -----
--- This is really slow, it goes through the whole list.
+-- TODO: This is really slow, it goes through the whole list.
 
 insert :: Commit -> CommitList -> (CommitList, [Commit])
 insert commit (CommitList l s) = insert' $ partition (< commit) l

@@ -1,7 +1,10 @@
+{-# LANGUAGE Rank2Types, FlexibleContexts #-}
+
 module Cortex.Miranda.ValueTree
     ( ValueTree
     , empty
     , lookup
+    , lookupHash
     , lookupAll
     , lookupAllWhere
     , insert
@@ -14,14 +17,22 @@ module Cortex.Miranda.ValueTree
 import Prelude hiding (lookup)
 import Data.Map (Map)
 import qualified Data.Map as Map
+import Control.Monad.Trans (MonadIO)
+import Control.Monad.Error (MonadError)
+import Control.Monad.State (MonadState)
+import Data.Maybe (isNothing, fromJust)
 
-import Cortex.Miranda.Commit (Commit (Commit))
+import Cortex.Miranda.Commit (Commit)
 import qualified Cortex.Miranda.Commit as Commit
 
 -----
 
-data ValueTree = Node (Map String ValueTree) (Maybe String)
-    deriving (Show, Read, Eq)
+type SIM m a = (MonadIO m, MonadError String m, MonadState String m) => m a
+
+-----
+
+data ValueTree = Node (Map String ValueTree) (Maybe Commit)
+    deriving (Eq, Show, Read)
 
 -----
 
@@ -29,64 +40,93 @@ empty :: ValueTree
 empty = Node Map.empty Nothing
 
 -----
+-- Get value corresponding to given key.
 
-lookup :: String -> ValueTree -> Maybe String
+lookup :: String -> ValueTree -> SIM m (Maybe String)
 lookup key t = lookup' (split key) t
 
-lookup' :: [String] -> ValueTree -> Maybe String
-lookup' [] (Node _ v) = v
+lookup' :: [String] -> ValueTree -> SIM m (Maybe String)
+lookup' [] (Node _ c)
+    | isNothing c = return Nothing
+    | otherwise = do
+        v <- Commit.getValue $ fromJust c
+        return $ Just v
 lookup' (k:key) (Node m _)
     | Map.member k m = lookup' key (m Map.! k)
-    | otherwise = Nothing
+    | otherwise = return Nothing
 
 -----
+-- Get hash of the value corresponding to given key.
 
-lookupAll :: String -> ValueTree -> [(String, String)]
+lookupHash :: String -> ValueTree -> SIM m (Maybe String)
+lookupHash key t = lookupHash' (split key) t
+
+lookupHash' :: [String] -> ValueTree -> SIM m (Maybe String)
+lookupHash' [] (Node _ c)
+    | isNothing c = return Nothing
+    | otherwise = do
+        h <- Commit.getValueHash $ fromJust c
+        return $ Just h
+lookupHash' (k:key) (Node m _)
+    | Map.member k m = lookupHash' key (m Map.! k)
+    | otherwise = return Nothing
+
+-----
+-- Get all commits corresponding to given key prefix.
+
+lookupAll :: String -> ValueTree -> SIM m [(String, String)]
 lookupAll key t = lookupAllWhere key (\_ _ -> True) t
 
 -----
+-- Get all commits corresponding to given key prefix where (partial key, value)
+-- pair holds given property.
 
 lookupAllWhere :: String -> (String -> String -> Bool) -> ValueTree ->
-    [(String, String)]
-lookupAllWhere key f t = lookupAllWhere' (split key) f t
+    SIM m [(String, String)]
+lookupAllWhere key f vt = lookupAllWhere' (split key) f vt
 
 lookupAllWhere' :: [String] -> (String -> String -> Bool) -> ValueTree ->
-    [(String, String)]
-lookupAllWhere' [] f n = getAll f n
+    SIM m [(String, String)]
+lookupAllWhere' [] f vt = getAll f vt
 lookupAllWhere' (k:key) f (Node m _)
     | Map.member k m = lookupAllWhere' key f (m Map.! k)
-    | otherwise = []
+    | otherwise = return []
 
-getAll :: (String -> String -> Bool) -> ValueTree -> [(String, String)]
+getAll :: (String -> String -> Bool) -> ValueTree -> SIM m [(String, String)]
 getAll f v = getAll' "" f v
 
 getAll' :: String -> (String -> String -> Bool) -> ValueTree ->
-    [(String, String)]
-getAll' k f (Node m (Just v))
-    | f k v = (k, v):(getAll' k f (Node m Nothing))
-    | otherwise = getAll' k f (Node m Nothing)
-getAll' k f (Node m Nothing) = concatMap
-    (\(k', v') -> getAll' (if null k then k' else k ++ "::" ++ k') f v')
-    (Map.toList m)
+    SIM m [(String, String)]
+getAll' k f (Node m (Just c)) = do
+    rest <- getAll' k f (Node m Nothing)
+    v <- Commit.getValue c
+    if f k v
+        then return $ (k, v):rest
+        else return rest
+getAll' k f (Node m Nothing) = do
+    l <- mapM
+        (\(k', vt') -> getAll' (if null k then k' else k ++ "::" ++ k') f vt')
+        (Map.toList m)
+    return $ concat l
 
 -----
 
-insert :: String -> String -> ValueTree -> ValueTree
-insert key value t = insert' (split key) value t
+insert :: String -> Commit -> ValueTree -> ValueTree
+insert key commit vt = insert' (split key) commit vt
 
-insert' :: [String] -> String -> ValueTree -> ValueTree
-insert' [] value (Node m _) = Node m (Just value)
-insert' (k:key) value (Node m v)
-    | Map.member k m = Node (Map.insert k (insert' key value (m Map.! k)) m) v
-    | otherwise = Node (Map.insert k (insert' key value empty) m) v
+insert' :: [String] -> Commit -> ValueTree -> ValueTree
+insert' [] commit (Node m _) = Node m (Just commit)
+insert' (k:key) commit (Node m v)
+    | Map.member k m = Node (Map.insert k (insert' key commit (m Map.! k)) m) v
+    | otherwise = Node (Map.insert k (insert' key commit empty) m) v
 
 -----
 
 delete :: String -> ValueTree -> ValueTree
-delete key t = delete' (split key) t
+delete key vt = delete' (split key) vt
 
 delete' :: [String] -> ValueTree -> ValueTree
-delete' key t = handle $ delete'' key t
+delete' key vt = handle $ delete'' key vt
     where
         handle (Just n) = n
         handle Nothing = empty
@@ -107,11 +147,13 @@ delete'' (k:key) (Node m v) = checkMap $ Map.update (delete'' key) k m
 -----
 
 apply :: Commit -> ValueTree -> ValueTree
-apply (Commit key Commit.Delete _ _) vt = delete key vt
-apply (Commit key (Commit.Set value) _ _) vt = insert key value vt
+apply commit vt
+    | Commit.isDelete commit = delete (Commit.getKey commit) vt
+    | otherwise = insert (Commit.getKey commit) commit vt
 
 -----
 
+-- Split key at '::' and return list of key parts.
 split :: String -> [String]
 split "" = []
 split (k:key) = split' k key ""

@@ -1,15 +1,17 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
-import Control.Monad.Error (runErrorT, ErrorT)
+import Control.Monad.Error (runErrorT, ErrorT, throwError)
 import System.IO
 import Control.Concurrent.Lifted
+import Control.Monad
+import Data.Maybe (isNothing, fromJust)
 
 import Cortex.Common.OptParse (CmdArgs)
 import Cortex.Common.MonadOptParse
 import qualified Cortex.Common.OptParse as OptParse
 import Cortex.Common.ErrorIO
-
-import Cortex.Miranda.Storage (runVS)
+import Cortex.Miranda.GrandMonadStack
+import Cortex.Miranda.Storage (runStorage)
 import Cortex.Miranda.Server (runServer)
 
 makeArgs :: ErrorT String IO CmdArgs
@@ -33,7 +35,7 @@ main = do
         reportError (Left s) = hPutStrLn stderr $ "Error: " ++ s
         reportError (Right _) = return ()
 
-main' :: ErrorT String IO ()
+main' :: LesserMonadStack ()
 main' = do
     -- Buffer stderr output to get sane log messages, not mixed up random
     -- letters.
@@ -42,4 +44,5 @@ main' = do
     args <- OptParse.evalArgs options
     (port :: Int) <- OptParse.getOptionWithDefault args "port" 8205
     (storage :: Maybe String) <- OptParse.getOption args "storage"
-    runVS (runServer port storage)
+    when (isNothing storage) $ throwError "You didn't specify a storage dir"
+    runStorage (runServer port) (fromJust storage)

@@ -1,17 +1,16 @@
-{-# LANGUAGE Rank2Types, FlexibleContexts #-}
-
 module Cortex.Miranda.Storage
     ( set
     , delete
     , lookup
+    , lookupHash
     , lookupAll
     , lookupAllWhere
     , insert
     , member
     , getCommits
+    , runStorage
     , Cortex.Miranda.Storage.show
     , Cortex.Miranda.Storage.read
-    , runVS
     ) where
 
 -----
@@ -19,7 +18,6 @@ module Cortex.Miranda.Storage
 import Prelude hiding (lookup)
 import Control.Monad.State
 import Control.Monad.Error
-import Control.Monad.Base (MonadBase)
 import Control.Concurrent.Lifted
 import Data.Maybe (fromJust, isNothing, listToMaybe)
 
@@ -27,104 +25,105 @@ import Cortex.Miranda.ValueStorage (ValueStorage)
 import qualified Cortex.Miranda.ValueStorage as VS
 import Cortex.Miranda.Commit (Commit)
 import qualified Cortex.Miranda.Commit as Commit
+import Cortex.Miranda.GrandMonadStack
 
 -----
 
-type MVS m a = (MonadState (MVar ValueStorage) m, MonadBase IO m) => m a
-
------
-
-runVS :: (Monad m, MonadBase IO m) => StateT (MVar ValueStorage) m a -> m ()
-runVS s = do
+runStorage :: GrandMonadStack a -> String -> LesserMonadStack ()
+runStorage s location = do
     mv <- newMVar VS.empty
-    runStateT s mv
+    runStateT (runStateT s location) mv
     return ()
 
 -----
 
-getVS :: MVS m ValueStorage
-getVS = get >>= takeMVar
+getVS :: GrandMonadStack ValueStorage
+getVS = (lift get) >>= takeMVar
 
 -----
 
-putVS :: ValueStorage -> MVS m ()
-putVS vs = get >>= (flip putMVar) vs
+putVS :: ValueStorage -> GrandMonadStack ()
+putVS vs = (lift get) >>= (flip putMVar) vs
 
 -----
 
-set ::  (MonadIO m) => String -> String -> MVS m ()
+readVS :: GrandMonadStack ValueStorage
+readVS = (lift get) >>= readMVar
+
+-----
+
+set ::  String -> String -> GrandMonadStack ()
 set key value = getVS >>= VS.set key value >>= putVS
 
 -----
 
-delete :: (MonadIO m) => String -> MVS m ()
+delete :: String -> GrandMonadStack ()
 delete key = getVS >>= VS.delete key >>= putVS
 
 -----
 
-lookup :: String -> MVS m (Maybe String)
+lookup :: String -> GrandMonadStack (Maybe String)
 lookup key = do
-    vs <- getVS
-    let value = VS.lookup key vs
-    putVS vs
-    return value
+    vs <- readVS
+    VS.lookup key vs
 
 -----
 
-lookupAll :: String -> MVS m [(String, String)]
+lookupHash :: String -> GrandMonadStack (Maybe String)
+lookupHash key = do
+    vs <- readVS
+    VS.lookupHash key vs
+
+-----
+
+lookupAll :: String -> GrandMonadStack [(String, String)]
 lookupAll key = do
-    vs <- getVS
-    let values = VS.lookupAll key vs
-    putVS vs
-    return values
+    vs <- readVS
+    VS.lookupAll key vs
 
 -----
 
 lookupAllWhere :: String -> (String -> String -> Bool) ->
-    MVS m [(String, String)]
+    GrandMonadStack [(String, String)]
 lookupAllWhere key f = do
-    vs <- getVS
-    let values = VS.lookupAllWhere key f vs
-    putVS vs
-    return values
+    vs <- readVS
+    VS.lookupAllWhere key f vs
 
 -----
 
-insert :: Commit -> MVS m ()
+insert :: Commit -> GrandMonadStack ()
 insert c = do
     vs <- getVS
     putVS $ VS.insert c vs
 
 -----
 
-member :: Commit.Hash -> MVS m Bool
+member :: Commit.Hash -> GrandMonadStack Bool
 member hash = do
-    vs <- getVS
+    vs <- readVS
     let b = VS.member hash vs
     putVS vs
     return b
 
 -----
 
-getCommits :: MVS m [Commit]
+getCommits :: GrandMonadStack [Commit]
 getCommits = do
-    vs <- getVS
+    vs <- readVS
     let commits = VS.getCommits vs
-    putVS vs
     return commits
 
 -----
 
-show :: MVS m String
+show :: GrandMonadStack String
 show = do
-    vs <- getVS
+    vs <- readVS
     let s = Prelude.show vs
-    putVS vs
     return s
 
 -----
 
-read :: (MonadError String m) => String -> MVS m ()
+read :: String -> GrandMonadStack ()
 read s = do
     -- Remove the old MVar value.
     getVS

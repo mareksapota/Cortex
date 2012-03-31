@@ -21,47 +21,42 @@ import Control.Concurrent.Lifted
 import Data.Time.Format (formatTime)
 import Data.Time.Clock (getCurrentTime)
 import System.Locale (defaultTimeLocale)
-import Data.Maybe (fromMaybe, isJust, isNothing, fromJust)
+import Data.Maybe (fromMaybe)
 
 import Cortex.Common.ErrorIO
 import Cortex.Common.Event
 import Cortex.Miranda.Commit (Commit)
 import qualified Cortex.Miranda.Commit as C
-import Cortex.Miranda.ValueStorage (ValueStorage)
 import qualified Cortex.Miranda.Storage as S
 import qualified Cortex.Common.Random as Random
-import qualified Cortex.Common.GZip as GZip
-import qualified Cortex.Common.Sha1 as Sha1
+import Cortex.Miranda.GrandMonadStack
 
 import qualified Cortex.Miranda.Config as Config
 
 -----
 
-type SEI a = StateT (MVar ValueStorage) (ErrorT String IO) a
-type SSEI a = StateT (Handle, String, Int) (StateT (MVar ValueStorage) (ErrorT String IO)) a
+type ConnectedMonadStack = StateT (Handle, String, Int) GrandMonadStack
 
 -----
 
-runServer :: Int -> Maybe String -> SEI ()
-runServer serverPort storage = do
-    when (isJust storage) $ do
-        let s = fromJust storage
-        readValueStorage s
-        periodicTimer Config.storageTime (saveValueStorage s)
+runServer :: Int -> GrandMonadStack ()
+runServer serverPort = do
+    readValueStorage
+    periodicTimer Config.storageTime saveValueStorage
     socket <- iListenOn $ PortNumber $ fromIntegral serverPort
     printLocalLog $ "Server started on port " ++ (show serverPort)
     -- Start sync daemon.
     periodicTimer Config.syncTime (sync serverPort)
     forever $ catchError (acceptConnection socket) reportError
     where
-        acceptConnection :: Socket -> SEI ()
+        acceptConnection :: Socket -> GrandMonadStack ()
         acceptConnection socket = do
             (hdl, host, port) <- iAccept socket
             fork $ evalStateT handleConnection (hdl, host, read $ show port)
             -- Ignore result of fork and return proper type.
             return ()
 
-        reportError :: String -> SEI ()
+        reportError :: String -> GrandMonadStack ()
         reportError e = do
             -- If this operation throws an error, accept loop will exit.
             printLocalLog $ "Error: " ++ e
@@ -70,13 +65,13 @@ runServer serverPort storage = do
 
 -- `fork` discards errors, so `reportError` from `runServer` won't report them,
 -- they have to be caught here.
-handleConnection :: SSEI ()
+handleConnection :: ConnectedMonadStack ()
 handleConnection = catchError handleConnection' reportError
     where
-        reportError :: String -> SSEI ()
+        reportError :: String -> ConnectedMonadStack ()
         reportError e = printLog $ "Error: " ++ e
 
-handleConnection' :: SSEI ()
+handleConnection' :: ConnectedMonadStack ()
 handleConnection' = do
     (hdl, _, _) <- get
     iSetBuffering hdl LineBuffering
@@ -84,7 +79,7 @@ handleConnection' = do
 
 -----
 
-chooseConnectionMode :: String -> SSEI ()
+chooseConnectionMode :: String -> ConnectedMonadStack ()
 
 chooseConnectionMode "set" = do
     key <- getLine
@@ -103,10 +98,8 @@ chooseConnectionMode "lookup" = do
 chooseConnectionMode "lookup hash" = do
     key <- getLine
     printLog $ "lookup hash: " ++ key
-    value <- lift $ S.lookup key
-    if (isNothing value)
-        then putLine $ show value
-        else putLine $ show $ Just (Sha1.hash $ fromJust value)
+    hash <- lift $ S.lookupHash key
+    putLine $ show hash
     closeConnection
 
 chooseConnectionMode "delete" = do
@@ -123,14 +116,14 @@ chooseConnectionMode "sync" = do
     -- mark it online.
     let key = "host::availability::" ++ host
     remote <- lift $ S.lookup key
-    when ("offline" == fromMaybe "offline" remote) $
-        lift $ S.set ("host::availability::" ++ host) "online"
+    when ("offline" == fromMaybe "offline" remote) (lift $ S.set key "online")
     printLog "sync request done"
 
 chooseConnectionMode _ = throwError "Unknown connection mode"
 
-clientSync :: SSEI ()
+clientSync :: ConnectedMonadStack ()
 clientSync = do
+    return ()
     hash <- getLine
     when (hash /= "done") $ do
         member <- lift $ S.member hash
@@ -138,18 +131,20 @@ clientSync = do
             then putLine "yes"
             else do
                 putLine "no"
-                commit <- getLine
-                lift $ S.insert $ read commit
+                cs <- getLine
+                c <- lift $ C.fromString cs
+                lift $ S.insert c
                 clientSync
 
 -----
 
-sync :: Int -> SEI ()
+sync :: Int -> GrandMonadStack ()
 sync port = do
+    return ()
     let selfHost = concat [Config.host, ":", show port]
     let key = "host::availability::" ++ selfHost
     self <- S.lookup key
-    when ("offline" == fromMaybe "offline" self) $ S.set key "online"
+    when ("offline" == fromMaybe "offline" self) (S.set key "online")
     hosts' <- S.lookupAllWhere "host::availability"
         (\k v -> k /= concat [Config.host, ":", show port] && v == "online")
     let hosts = fst $ unzip hosts'
@@ -157,7 +152,7 @@ sync port = do
     let syncHosts = map (\i -> hosts !! i) r
     forM_ syncHosts (performSync selfHost)
 
-performSync :: String -> String -> SEI ()
+performSync :: String -> String -> GrandMonadStack ()
 performSync selfHost hostString = do
     printLocalLog $ "Synchronising with " ++ hostString
     let host = takeWhile (/= ':') hostString
@@ -168,12 +163,12 @@ performSync selfHost hostString = do
         } `catchError` reportError
     printLocalLog $ "Synchronisation with " ++ hostString ++ " done"
     where
-        reportError :: String -> SEI ()
+        reportError :: String -> GrandMonadStack ()
         reportError e = do
             printLocalLog $ "Error: " ++ e
             S.set ("host::availability::" ++ hostString) "offline"
 
-performSync' :: String -> SSEI ()
+performSync' :: String -> ConnectedMonadStack ()
 performSync' selfHost = do
     putLine "sync"
     putLine selfHost
@@ -181,59 +176,64 @@ performSync' selfHost = do
     performSync'' (reverse commits)
     closeConnection
 
-performSync'' :: [Commit] -> SSEI ()
+performSync'' :: [Commit] -> ConnectedMonadStack ()
 performSync'' [] = putLine "done"
 
 performSync'' (c:commits) = do
     putLine $ C.getHash c
     l <- getLine
     when (l == "no") $ do
-        putLine $ show c
+        cs <- lift $ C.toString c
+        putLine cs
         performSync'' commits
 
 -----
 
-readValueStorage :: String -> SEI ()
-readValueStorage location = do
-    { printLocalLog $ "Reading storage from " ++ location
+readValueStorage :: GrandMonadStack ()
+readValueStorage = do
+    { storage <- get
+    ; let location = concat [storage, "/data"]
+    ; printLocalLog $ "Reading storage from " ++ location
     ; hdl <- iOpen location ReadMode
-    ; vs <- ibGetContents hdl
+    ; vs <- iGetLine hdl
     ; iClose hdl
-    ; S.read $ GZip.unpack vs
+    ; S.read vs
     ; printLocalLog $ "Storage was successfully read"
     } `catchError` reportError
     where
-        reportError :: String -> SEI ()
+        reportError :: String -> GrandMonadStack ()
         reportError e = do
             printLocalLog $ "Couldn't read storage: " ++ e
 
 -----
 
-saveValueStorage :: String -> SEI ()
-saveValueStorage location = do
-    { let tmp = location ++ ".tmp"
+saveValueStorage :: GrandMonadStack ()
+saveValueStorage = do
+    { storage <- get
+    ; let location = concat [storage, "/data"]
+    ; let tmp = location ++ ".tmp"
     ; hdl <- iOpen tmp WriteMode
     ; vs <- S.show
-    ; ibPutStr hdl (GZip.pack vs)
+    ; iPutStr hdl vs
     ; iClose hdl
     ; liftIO $ rawSystem "mv" [tmp, location]
     ; printLocalLog $ "Saved storage to " ++ location
     } `catchError` reportError
     where
-        reportError :: String -> SEI ()
+        reportError :: String -> GrandMonadStack ()
         reportError e = do
             printLocalLog $ "Saving storage failed: " ++ e
 
 -----
 
-getLine :: SSEI String
+getLine :: ConnectedMonadStack String
 getLine = do
     (hdl, _, _) <- get
     iGetLine hdl
 
 -----
 
-putLine :: String -> SSEI ()
+putLine :: String -> ConnectedMonadStack ()
 putLine s = do
     (hdl, _, _) <- get
     iPutStrLn hdl s
@@ -241,21 +241,21 @@ putLine s = do
 
 -----
 
-getHost :: SSEI String
+getHost :: ConnectedMonadStack String
 getHost = do
     (_, host, port) <- get
     return $ concat [host, ":", show port]
 
 -----
 
-closeConnection :: SSEI ()
+closeConnection :: ConnectedMonadStack ()
 closeConnection = do
     (hdl, _, _) <- get
     iClose hdl
 
 -----
 
-printLog :: String -> SSEI ()
+printLog :: String -> ConnectedMonadStack ()
 printLog msg = do
     timeString <- currentTime
     host <- getHost
@@ -264,7 +264,7 @@ printLog msg = do
 
 -----
 
-printLocalLog :: String -> SEI ()
+printLocalLog :: String -> GrandMonadStack ()
 printLocalLog msg = do
     timeString <- currentTime
     iPutStrLn stderr $ timeString ++ " -- " ++ msg
