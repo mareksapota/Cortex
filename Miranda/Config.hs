@@ -10,4 +10,4 @@ syncServers :: Int
 syncServers = 2
 
 storageTime :: Double
-storageTime = 5.0
+storageTime = 60.0

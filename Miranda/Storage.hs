@@ -20,12 +20,21 @@ import Control.Monad.State
 import Control.Monad.Error
 import Control.Concurrent.Lifted
 import Data.Maybe (fromJust, isNothing, listToMaybe)
+import Data.ByteString.Lazy.Char8 (ByteString)
 
 import Cortex.Miranda.ValueStorage (ValueStorage)
 import qualified Cortex.Miranda.ValueStorage as VS
 import Cortex.Miranda.Commit (Commit)
 import qualified Cortex.Miranda.Commit as Commit
 import Cortex.Miranda.GrandMonadStack
+
+-----
+-- WARNING
+--
+-- Each `getVS` call has to be followed by a `putVS` call.  If you want to use
+-- `putVS` you have to use `getVS` instead of `readVS`, otherwise Miranda will
+-- hang.
+-----
 
 -----
 
@@ -52,7 +61,7 @@ readVS = (lift get) >>= readMVar
 
 -----
 
-set ::  String -> String -> GrandMonadStack ()
+set ::  String -> ByteString -> GrandMonadStack ()
 set key value = getVS >>= VS.set key value >>= putVS
 
 -----
@@ -62,7 +71,7 @@ delete key = getVS >>= VS.delete key >>= putVS
 
 -----
 
-lookup :: String -> GrandMonadStack (Maybe String)
+lookup :: String -> GrandMonadStack (Maybe ByteString)
 lookup key = do
     vs <- readVS
     VS.lookup key vs
@@ -76,15 +85,15 @@ lookupHash key = do
 
 -----
 
-lookupAll :: String -> GrandMonadStack [(String, String)]
+lookupAll :: String -> GrandMonadStack [(String, ByteString)]
 lookupAll key = do
     vs <- readVS
     VS.lookupAll key vs
 
 -----
 
-lookupAllWhere :: String -> (String -> String -> Bool) ->
-    GrandMonadStack [(String, String)]
+lookupAllWhere :: String -> (String -> ByteString -> Bool) ->
+    GrandMonadStack [(String, ByteString)]
 lookupAllWhere key f = do
     vs <- readVS
     VS.lookupAllWhere key f vs
@@ -101,9 +110,7 @@ insert c = do
 member :: Commit.Hash -> GrandMonadStack Bool
 member hash = do
     vs <- readVS
-    let b = VS.member hash vs
-    putVS vs
-    return b
+    return $ VS.member hash vs
 
 -----
 

@@ -26,6 +26,8 @@ import System.IO (IOMode (ReadMode, WriteMode), Handle)
 import Data.Time.Format (formatTime)
 import Data.Time.Clock (getCurrentTime)
 import System.Locale (defaultTimeLocale)
+import Data.ByteString.Lazy.Char8 (ByteString)
+import qualified Data.ByteString.Lazy.Char8 as BS
 
 import qualified Cortex.Common.Sha1 as Sha1
 import Cortex.Common.ErrorIO
@@ -89,13 +91,13 @@ open (Commit _ Delete _ _) _ = throwError "Can't open delete commits"
 -- Create a new set type commit.
 
 set :: (MonadIO m, MonadState String m, MonadError String m) =>
-    String -> String -> m Commit
+    String -> ByteString -> m Commit
 set key value = do
-    let hash = Sha1.hash value
+    let hash = Sha1.bhash value
     ts <- time
     let commit = Commit key (Set hash) "" ts
     hdl <- open commit WriteMode
-    iPutStr hdl value
+    ibPutStr hdl value
     iClose hdl
     return commit
 
@@ -111,11 +113,10 @@ delete key = do
 -- Read commit value from storage.
 
 getValue :: (MonadIO m, MonadState String m, MonadError String m) =>
-    Commit -> m String
+    Commit -> m ByteString
 getValue commit = do
     hdl <- open commit ReadMode
-    value <- iGetLine hdl
-    iClose hdl
+    value <- ibGetContents hdl
     return value
 
 -----
@@ -178,7 +179,7 @@ toString (Commit key Delete hash ts) = return $ show $
 
 toString (Commit key op hash ts) = do
     value <- getValue (Commit key op hash ts)
-    return $ show $ (key, (Set value), hash, ts)
+    return $ show $ (key, (Set (BS.unpack value)), hash, ts)
 
 -----
 

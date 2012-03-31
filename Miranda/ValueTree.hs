@@ -21,6 +21,7 @@ import Control.Monad.Trans (MonadIO)
 import Control.Monad.Error (MonadError)
 import Control.Monad.State (MonadState)
 import Data.Maybe (isNothing, fromJust)
+import Data.ByteString.Lazy.Char8 (ByteString)
 
 import Cortex.Miranda.Commit (Commit)
 import qualified Cortex.Miranda.Commit as Commit
@@ -42,10 +43,10 @@ empty = Node Map.empty Nothing
 -----
 -- Get value corresponding to given key.
 
-lookup :: String -> ValueTree -> SIM m (Maybe String)
+lookup :: String -> ValueTree -> SIM m (Maybe ByteString)
 lookup key t = lookup' (split key) t
 
-lookup' :: [String] -> ValueTree -> SIM m (Maybe String)
+lookup' :: [String] -> ValueTree -> SIM m (Maybe ByteString)
 lookup' [] (Node _ c)
     | isNothing c = return Nothing
     | otherwise = do
@@ -74,29 +75,30 @@ lookupHash' (k:key) (Node m _)
 -----
 -- Get all commits corresponding to given key prefix.
 
-lookupAll :: String -> ValueTree -> SIM m [(String, String)]
+lookupAll :: String -> ValueTree -> SIM m [(String, ByteString)]
 lookupAll key t = lookupAllWhere key (\_ _ -> True) t
 
 -----
 -- Get all commits corresponding to given key prefix where (partial key, value)
 -- pair holds given property.
 
-lookupAllWhere :: String -> (String -> String -> Bool) -> ValueTree ->
-    SIM m [(String, String)]
+lookupAllWhere :: String -> (String -> ByteString -> Bool) -> ValueTree ->
+    SIM m [(String, ByteString)]
 lookupAllWhere key f vt = lookupAllWhere' (split key) f vt
 
-lookupAllWhere' :: [String] -> (String -> String -> Bool) -> ValueTree ->
-    SIM m [(String, String)]
+lookupAllWhere' :: [String] -> (String -> ByteString -> Bool) -> ValueTree ->
+    SIM m [(String, ByteString)]
 lookupAllWhere' [] f vt = getAll f vt
 lookupAllWhere' (k:key) f (Node m _)
     | Map.member k m = lookupAllWhere' key f (m Map.! k)
     | otherwise = return []
 
-getAll :: (String -> String -> Bool) -> ValueTree -> SIM m [(String, String)]
+getAll :: (String -> ByteString -> Bool) -> ValueTree ->
+    SIM m [(String, ByteString)]
 getAll f v = getAll' "" f v
 
-getAll' :: String -> (String -> String -> Bool) -> ValueTree ->
-    SIM m [(String, String)]
+getAll' :: String -> (String -> ByteString -> Bool) -> ValueTree ->
+    SIM m [(String, ByteString)]
 getAll' k f (Node m (Just c)) = do
     rest <- getAll' k f (Node m Nothing)
     v <- Commit.getValue c

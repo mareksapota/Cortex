@@ -90,7 +90,7 @@ def perform(repo_type):
         response = m.recv()
         m.close()
 
-        if response == 'Just "{0}"'.format(sha1):
+        if response == 'Just {0}'.format(sha1):
             print('Miranda already has this repository version.')
             sys.exit(0)
 
@@ -110,7 +110,7 @@ def perform(repo_type):
         print('Uploaded new repository version to Miranda.')
     except Exception as e:
         print('Miranda communication error: {0}'.format(e))
-
-    # Remove the temporary file.
-    os.unlink(tmp)
-    os.unlink('{0}.base64'.format(tmp))
+    finally:
+        # Remove the temporary file.
+        os.unlink(tmp)
+        os.unlink('{0}.base64'.format(tmp))

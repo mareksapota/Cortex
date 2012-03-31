@@ -21,7 +21,9 @@ import Control.Concurrent.Lifted
 import Data.Time.Format (formatTime)
 import Data.Time.Clock (getCurrentTime)
 import System.Locale (defaultTimeLocale)
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, fromJust, isNothing)
+import Data.ByteString.Lazy.Char8 (ByteString)
+import qualified Data.ByteString.Lazy.Char8 as BS
 
 import Cortex.Common.ErrorIO
 import Cortex.Common.Event
@@ -83,7 +85,8 @@ chooseConnectionMode :: String -> ConnectedMonadStack ()
 
 chooseConnectionMode "set" = do
     key <- getLine
-    value <- getLine
+    rest <- getRest
+    let value = BS.takeWhile (/= '\n') rest
     printLog $ "set: " ++ key
     lift $ S.set key value
     closeConnection
@@ -92,14 +95,22 @@ chooseConnectionMode "lookup" = do
     key <- getLine
     printLog $ "lookup: " ++ key
     value <- lift $ S.lookup key
-    putLine $ show value
+    if (isNothing value)
+        then putLine "Nothing"
+        else do
+            writePart "Just "
+            putbLine (fromJust value)
     closeConnection
 
 chooseConnectionMode "lookup hash" = do
     key <- getLine
     printLog $ "lookup hash: " ++ key
     hash <- lift $ S.lookupHash key
-    putLine $ show hash
+    if (isNothing hash)
+        then putLine "Nothing"
+        else do
+            writePart "Just "
+            putLine (fromJust hash)
     closeConnection
 
 chooseConnectionMode "delete" = do
@@ -111,19 +122,22 @@ chooseConnectionMode "delete" = do
 chooseConnectionMode "sync" = do
     printLog "sync request"
     host <- getLine
-    clientSync
     -- If remote host was assumed offline, client side synchronisation will not
     -- mark it online.
     let key = "host::availability::" ++ host
     remote <- lift $ S.lookup key
-    when ("offline" == fromMaybe "offline" remote) (lift $ S.set key "online")
+    let boff = BS.pack "offline"
+    when (boff == fromMaybe boff remote) $ do
+        lift $ S.set key (BS.pack "online")
+        printLog $ concat ["Marked ", host, " online"]
+    clientSync
     printLog "sync request done"
+    closeConnection
 
 chooseConnectionMode _ = throwError "Unknown connection mode"
 
 clientSync :: ConnectedMonadStack ()
 clientSync = do
-    return ()
     hash <- getLine
     when (hash /= "done") $ do
         member <- lift $ S.member hash
@@ -140,13 +154,15 @@ clientSync = do
 
 sync :: Int -> GrandMonadStack ()
 sync port = do
-    return ()
     let selfHost = concat [Config.host, ":", show port]
     let key = "host::availability::" ++ selfHost
-    self <- S.lookup key
-    when ("offline" == fromMaybe "offline" self) (S.set key "online")
+    self <- id $ S.lookup key
+    let boff = BS.pack "offline"
+    when (boff == fromMaybe boff self) (S.set key (BS.pack "online"))
     hosts' <- S.lookupAllWhere "host::availability"
-        (\k v -> k /= concat [Config.host, ":", show port] && v == "online")
+        (\k v ->
+            k /= concat [Config.host, ":", show port] &&
+            v == (BS.pack "online"))
     let hosts = fst $ unzip hosts'
     r <- Random.generate (0, (length hosts) - 1) Config.syncServers
     let syncHosts = map (\i -> hosts !! i) r
@@ -166,7 +182,7 @@ performSync selfHost hostString = do
         reportError :: String -> GrandMonadStack ()
         reportError e = do
             printLocalLog $ "Error: " ++ e
-            S.set ("host::availability::" ++ hostString) "offline"
+            S.set ("host::availability::" ++ hostString) (BS.pack "offline")
 
 performSync' :: String -> ConnectedMonadStack ()
 performSync' selfHost = do
@@ -233,10 +249,32 @@ getLine = do
 
 -----
 
+getRest :: ConnectedMonadStack ByteString
+getRest = do
+    (hdl, _, _) <- get
+    ibGetContents hdl
+
+-----
+
 putLine :: String -> ConnectedMonadStack ()
 putLine s = do
     (hdl, _, _) <- get
     iPutStrLn hdl s
+    iFlush hdl
+
+-----
+
+writePart :: String -> ConnectedMonadStack ()
+writePart s = do
+    (hdl, _, _) <- get
+    iPutStr hdl s
+
+-----
+
+putbLine :: ByteString -> ConnectedMonadStack ()
+putbLine s = do
+    (hdl, _, _) <- get
+    ibPutStrLn hdl s
     iFlush hdl
 
 -----

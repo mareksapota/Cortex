@@ -20,6 +20,7 @@ import Prelude hiding (lookup)
 import Control.Monad.Trans (MonadIO)
 import Control.Monad.Error (MonadError)
 import Control.Monad.State (MonadState)
+import Data.ByteString.Lazy.Char8 (ByteString)
 
 import Cortex.Miranda.ValueTree (ValueTree)
 import qualified Cortex.Miranda.ValueTree as VT
@@ -44,7 +45,7 @@ empty = ValueStorage VT.empty CL.empty
 
 -----
 
-set :: String -> String -> ValueStorage -> SIM m ValueStorage
+set :: String -> ByteString -> ValueStorage -> SIM m ValueStorage
 set key value (ValueStorage vt cl) = do
     c <- Commit.set key value
     let vt' = VT.insert key c vt
@@ -62,7 +63,7 @@ delete key (ValueStorage vt cl) = do
 
 -----
 
-lookup :: String -> ValueStorage -> SIM m (Maybe String)
+lookup :: String -> ValueStorage -> SIM m (Maybe ByteString)
 lookup key (ValueStorage vt _) = VT.lookup key vt
 
 -----
@@ -72,13 +73,13 @@ lookupHash key (ValueStorage vt _) = VT.lookupHash key vt
 
 -----
 
-lookupAll :: String -> ValueStorage -> SIM m [(String, String)]
+lookupAll :: String -> ValueStorage -> SIM m [(String, ByteString)]
 lookupAll key (ValueStorage vt _) = VT.lookupAll key vt
 
 -----
 
-lookupAllWhere :: String -> (String -> String -> Bool) -> ValueStorage ->
-    SIM m [(String, String)]
+lookupAllWhere :: String -> (String -> ByteString -> Bool) -> ValueStorage ->
+    SIM m [(String, ByteString)]
 lookupAllWhere key f (ValueStorage vt _) = VT.lookupAllWhere key f vt
 
 -----
