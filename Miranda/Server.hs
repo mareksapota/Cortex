@@ -101,6 +101,15 @@ chooseConnectionMode "lookup" = do
             putbLine (fromJust value)
     closeConnection
 
+chooseConnectionMode "lookup all" = do
+    key <- getLine
+    printLog $ "lookup all: " ++ key
+    kv <- lift $ S.lookupAll key
+    let keys = fst $ unzip kv
+    putLine $ show $ length keys
+    forM_ keys putLine
+    closeConnection
+
 chooseConnectionMode "lookup hash" = do
     key <- getLine
     printLog $ "lookup hash: " ++ key
