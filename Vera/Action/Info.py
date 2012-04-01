@@ -20,6 +20,8 @@ def lookup(key):
 def perform():
     try:
         print(Config.name, 'settings')
+        print()
+        print('Application type:', lookup('type'))
         print('Instances:', lookup('instances'))
     except Exception as e:
         print('Miranda communication error: {0}'.format(e))

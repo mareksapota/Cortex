@@ -30,7 +30,7 @@ def perform(repo_type):
             print('Discovered Bazaar repository')
             repo_type = 'bzr'
         else:
-            print('Could not determine repository type, using plain')
+            print('Could not determine repository type, using plain.')
             repo_type = 'plain'
 
     # Abandon if repository type is not supported.
