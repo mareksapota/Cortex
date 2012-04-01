@@ -36,11 +36,9 @@ test = True
 clean = False
 # Compiler flags.
 flags = [
-    # Optimizations.
-    '-O2',
+    # Enable multithreading.
     '-threaded',
-    # Slower compilation time.
-    #'-fllvm',
+    '-with-rtsopts="-N"',
     # Enable warning messages.
     '-Wall',
     '-fno-warn-unused-do-bind'
@@ -88,6 +86,12 @@ parser.add_argument(
     help = 'don\'t build tests'
 )
 parser.add_argument(
+    '--fast',
+    dest = 'fast',
+    action = 'store_true',
+    help = 'optimise for build speed, not code speed'
+)
+parser.add_argument(
     '--profile',
     dest = 'profile',
     action = 'store_true',
@@ -110,6 +114,15 @@ if args.profile:
         '-auto-all',
         '-caf-all',
         '-rtsopts'
+    ])
+if args.fast:
+    flags.extend([
+        '-O0'
+    ])
+else:
+    flags.extend([
+        '-O2',
+        '-fllvm',
     ])
 #####
 

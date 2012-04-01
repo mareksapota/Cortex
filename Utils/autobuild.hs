@@ -33,7 +33,7 @@ main' n modified = do
         when (not e) $ do
             readSampleVar modified
             printLog "Auto build triggered"
-            rawSystem "./build" []
+            rawSystem "./build" ["--fast"]
             printLog "Auto build done"
     where
         handle :: Event -> IO ()
