@@ -35,6 +35,7 @@ type SIM m a = (MonadIO m, MonadError String m, MonadState String m) => m a
 -----
 
 data ValueTree = Node (Map String ValueTree) (Maybe Commit)
+    deriving (Eq)
 
 instance Binary ValueTree where
     put (Node m c) = B.put (m, c)

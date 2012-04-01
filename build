@@ -13,8 +13,8 @@ targets = {
     'miranda' : {
         'main' : 'Miranda/miranda',
         'test' : [
-#             'Miranda/test/ValueTree_Test',
-#             'Miranda/test/Commit_Test'
+            'Miranda/test/ValueTree_Test',
+            'Miranda/test/Commit_Test'
         ]
     },
     'telnet' : {
