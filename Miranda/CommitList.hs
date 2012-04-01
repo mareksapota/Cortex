@@ -11,6 +11,8 @@ module Cortex.Miranda.CommitList
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.List (partition)
+import Data.Binary (Binary)
+import qualified Data.Binary as B
 
 import Cortex.Miranda.Commit (Commit)
 import qualified Cortex.Miranda.Commit as Commit
@@ -18,7 +20,12 @@ import qualified Cortex.Miranda.Commit as Commit
 -----
 
 data CommitList = CommitList [Commit] (Set Commit.Hash)
-    deriving (Show, Read)
+
+instance Binary CommitList where
+    put (CommitList l s) = B.put (l, s)
+    get = do
+        (l, s) <- B.get
+        return $ CommitList l s
 
 -----
 

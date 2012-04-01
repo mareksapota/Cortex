@@ -12,7 +12,7 @@ import System.IO
     ( stderr
     , Handle
     , BufferMode (LineBuffering)
-    , IOMode (ReadMode, WriteMode)
+    , IOMode (ReadMode, WriteMode, AppendMode)
     )
 import System.Cmd (rawSystem)
 import Control.Monad.State
@@ -89,7 +89,6 @@ chooseConnectionMode "set" = do
     let value = BS.takeWhile (/= '\n') rest
     printLog $ "set: " ++ key
     lift $ S.set key value
-    closeConnection
 
 chooseConnectionMode "lookup" = do
     key <- getLine
@@ -133,7 +132,6 @@ chooseConnectionMode "sync" = do
     rest <- getRest
     clientSync $ BS.lines rest
     printLog "sync request done"
-    closeConnection
 
 chooseConnectionMode _ = throwError "Unknown connection mode"
 
@@ -219,8 +217,7 @@ readValueStorage = do
     ; let location = concat [storage, "/data"]
     ; printLocalLog $ "Reading storage from " ++ location
     ; hdl <- iOpen location ReadMode
-    ; vs <- iGetLine hdl
-    ; iClose hdl
+    ; vs <- ibGetContents hdl
     ; S.read vs
     ; printLocalLog $ "Storage was successfully read"
     } `catchError` reportError
@@ -238,8 +235,12 @@ saveValueStorage = do
     ; let tmp = location ++ ".tmp"
     ; hdl <- iOpen tmp WriteMode
     ; vs <- S.show
-    ; iPutStr hdl vs
+    ; ibPutStr hdl vs
     ; iClose hdl
+    -- Lazy IO hack.  Make sure value is on disc before exiting.
+    ; hdl' <- iOpen tmp AppendMode
+    ; iClose hdl'
+    -- End of lazy IO hack.
     ; liftIO $ rawSystem "mv" [tmp, location]
     ; printLocalLog $ "Saved storage to " ++ location
     } `catchError` reportError
@@ -256,6 +257,7 @@ getLine = do
     iGetLine hdl
 
 -----
+-- This will close the handle after it's done.
 
 getRest :: ConnectedMonadStack ByteString
 getRest = do

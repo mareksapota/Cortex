@@ -21,6 +21,8 @@ import Control.Monad.Trans (MonadIO)
 import Control.Monad.Error (MonadError)
 import Control.Monad.State (MonadState)
 import Data.ByteString.Lazy.Char8 (ByteString)
+import Data.Binary (Binary)
+import qualified Data.Binary as B
 
 import Cortex.Miranda.ValueTree (ValueTree)
 import qualified Cortex.Miranda.ValueTree as VT
@@ -36,7 +38,12 @@ type SIM m a = (MonadIO m, MonadError String m, MonadState String m) => m a
 -----
 
 data ValueStorage = ValueStorage ValueTree CommitList
-    deriving (Show, Read)
+
+instance Binary ValueStorage where
+    put (ValueStorage vt cl) = B.put (vt, cl)
+    get = do
+        (vt, cl) <- B.get
+        return $ ValueStorage vt cl
 
 -----
 

@@ -22,6 +22,8 @@ import Control.Monad.Error (MonadError)
 import Control.Monad.State (MonadState)
 import Data.Maybe (isNothing, fromJust)
 import Data.ByteString.Lazy.Char8 (ByteString)
+import Data.Binary (Binary)
+import qualified Data.Binary as B
 
 import Cortex.Miranda.Commit (Commit)
 import qualified Cortex.Miranda.Commit as Commit
@@ -33,7 +35,12 @@ type SIM m a = (MonadIO m, MonadError String m, MonadState String m) => m a
 -----
 
 data ValueTree = Node (Map String ValueTree) (Maybe Commit)
-    deriving (Eq, Show, Read)
+
+instance Binary ValueTree where
+    put (Node m c) = B.put (m, c)
+    get = do
+        (m, c) <- B.get
+        return $ Node m c
 
 -----
 

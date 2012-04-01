@@ -17,9 +17,7 @@ module Cortex.Miranda.Storage
 
 import Prelude hiding (lookup)
 import Control.Monad.State
-import Control.Monad.Error
 import Control.Concurrent.Lifted
-import Data.Maybe (fromJust, isNothing, listToMaybe)
 import Data.ByteString.Lazy.Char8 (ByteString)
 
 import Cortex.Miranda.ValueStorage (ValueStorage)
@@ -27,6 +25,7 @@ import qualified Cortex.Miranda.ValueStorage as VS
 import Cortex.Miranda.Commit (Commit)
 import qualified Cortex.Miranda.Commit as Commit
 import Cortex.Miranda.GrandMonadStack
+import Cortex.Common.ErrorIO
 
 -----
 -- WARNING
@@ -122,21 +121,16 @@ getCommits = do
 
 -----
 
-show :: GrandMonadStack String
+show :: GrandMonadStack ByteString
 show = do
     vs <- readVS
-    let s = Prelude.show vs
-    return s
+    iEncode vs
 
 -----
 
-read :: String -> GrandMonadStack ()
+read :: ByteString -> GrandMonadStack ()
 read s = do
     -- Remove the old MVar value.
     getVS
-    let vs = maybeRead s
-    when (isNothing vs) (throwError "Couldn't parse ValueStorage")
-    putVS $ fromJust vs
-
-maybeRead :: String -> Maybe ValueStorage
-maybeRead = fmap fst . listToMaybe . reads
+    vs <- iDecode s
+    putVS vs

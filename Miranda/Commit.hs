@@ -26,6 +26,9 @@ import Data.Time.Format (formatTime)
 import Data.Time.Clock (getCurrentTime)
 import System.Locale (defaultTimeLocale)
 import Data.ByteString.Lazy.Char8 (ByteString)
+import Data.Binary (Binary)
+import qualified Data.Binary as B
+import Data.Maybe (isNothing, fromJust)
 
 import qualified Cortex.Common.Sha1 as Sha1
 import Cortex.Common.ErrorIO
@@ -39,10 +42,9 @@ type Timestamp = String
 data Operation =
       Set Hash
     | Delete
-    deriving (Eq, Show, Read)
+    deriving (Eq, Show)
 
 data Commit = Commit Key Operation Hash Timestamp
-    deriving (Show, Read)
 
 instance Eq Commit where
     (Commit k1 op1 _ t1) == (Commit k2 op2 _ t2) =
@@ -65,6 +67,21 @@ instance Ord Commit where
 
                 tryOp EQ = compare op1 op2
                 tryOp o = o
+
+instance Binary Operation where
+    put Delete = B.put (Nothing :: Maybe String)
+    put (Set hash) = B.put (Just hash)
+    get = do
+        op <- B.get
+        if (isNothing op)
+            then return Delete
+            else return $ Set $ fromJust op
+
+instance Binary Commit where
+    put (Commit key op hash ts) = B.put (key, op, hash, ts)
+    get = do
+        (key, op, hash, ts) <- B.get
+        return $ Commit key op hash ts
 
 -----
 -- Generate current timestamp.
