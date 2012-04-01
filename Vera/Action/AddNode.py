@@ -22,3 +22,4 @@ def perform(node_info):
         m.close()
     except Exception as e:
         print('Miranda communication error: {0}'.format(e))
+        sys.exit(1)

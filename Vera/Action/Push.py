@@ -110,6 +110,7 @@ def perform(repo_type):
         print('Uploaded new repository version to Miranda.')
     except Exception as e:
         print('Miranda communication error: {0}'.format(e))
+        sys.exit(1)
     finally:
         # Remove the temporary file.
         os.unlink(tmp)

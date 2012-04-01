@@ -10,6 +10,8 @@ import Miranda
 import Config
 import Action.Push
 import Action.AddNode
+import Action.Instances
+import Action.Info
 
 #####
 # Command line options.
@@ -40,7 +42,20 @@ parser.add_argument(
     '--add-node',
     dest = 'node_info',
     help = 'Add a new Cortex node.  You should specify host:port of a new node '
-        '(host should be the same as set in Miranda.Config)'
+        '(host should be the same as set in Miranda.Config).'
+)
+parser.add_argument(
+    '--instances',
+    dest = 'instances',
+    type = int,
+    help = 'Set how many instances of this application Cortex should run.'
+)
+parser.add_argument(
+    '--info',
+    dest = 'action',
+    action = 'store_const',
+    const = 'info',
+    help = 'Get current Cortex settings for this application.'
 )
 #####
 
@@ -56,5 +71,9 @@ if args.action == 'push':
     Action.Push.perform(args.repo_type)
 elif args.node_info is not None:
     Action.AddNode.perform(args.node_info)
+elif args.instances is not None:
+    Action.Instances.perform(args.instances)
+elif args.action == 'info':
+    Action.Info.perform()
 else:
     print('You have to specify an action.')
