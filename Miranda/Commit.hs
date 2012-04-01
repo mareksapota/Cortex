@@ -68,6 +68,8 @@ instance Ord Commit where
                 tryOp EQ = compare op1 op2
                 tryOp o = o
 
+-- This only preserves value hash, not the value itself.  To serialize value
+-- too, use `toString` and `fromString`.
 instance Binary Operation where
     put Delete = B.put (Nothing :: Maybe String)
     put (Set hash) = B.put (Just hash)
@@ -98,6 +100,8 @@ open :: (MonadIO m, MonadState String m, MonadError String m) =>
     Commit -> IOMode -> m Handle
 open (Commit key (Set hash) _ ts) mode = do
     storage <- get
+    -- Uses the same things as equality testing, the same location can be only
+    -- used by identical commits.
     let location = concat [storage, "/", key, ".", hash, ".", ts]
     -- Because of lazy IO saved commit might not be actually saved to disc and
     -- opening it will result in a file already locked error.  To counter that,
@@ -196,11 +200,12 @@ isSet commit = not $ isDelete commit
 toString :: (MonadIO m, MonadState String m, MonadError String m) =>
     Commit -> m ByteString
 
-toString (Commit key Delete hash ts) = iEncode $ (key, "delete", "", hash, ts)
+toString (Commit key Delete hash ts) =
+    iEncode $ (key, "delete", "", "", hash, ts)
 
-toString (Commit key op hash ts) = do
-    value <- getValue (Commit key op hash ts)
-    iEncode $ (key, "set", value, hash, ts)
+toString (Commit key (Set valueHash) hash ts) = do
+    value <- getValue (Commit key (Set valueHash) hash ts)
+    iEncode $ (key, "set", value, valueHash, hash, ts)
 
 -----
 
@@ -208,17 +213,16 @@ fromString :: (MonadIO m, MonadState String m, MonadError String m) =>
     ByteString -> m Commit
 
 fromString s = do
-    (tuple :: (Key, String, ByteString, Hash, Timestamp)) <- iDecode s
+    (tuple :: (Key, String, ByteString, Hash, Hash, Timestamp)) <- iDecode s
     fromString' tuple
 
 fromString' :: (MonadIO m, MonadState String m, MonadError String m) =>
-    (Key, String, ByteString, Hash, Timestamp) -> m Commit
+    (Key, String, ByteString, Hash, Hash, Timestamp) -> m Commit
 
-fromString' (key, "delete", _, hash, ts) =
+fromString' (key, "delete", _, _, hash, ts) =
     return $ Commit key Delete hash ts
 
-fromString' (key, "set", value, hash, ts) = do
-    let valueHash = Sha1.bhash value
+fromString' (key, "set", value, valueHash, hash, ts) = do
     let commit = Commit key (Set valueHash) hash ts
     hdl <- open commit WriteMode
     ibPutStr hdl value
