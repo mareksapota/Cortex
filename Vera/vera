@@ -19,11 +19,13 @@ import Action.NewApp
 parser = argparse.ArgumentParser()
 parser.add_argument(
     'host',
+    nargs = '?',
     help = 'Host on which Miranda runs.'
 )
 parser.add_argument(
     'port',
     type = int,
+    nargs = '?',
     help = 'Port on which Miranda runs.'
 )
 parser.add_argument(

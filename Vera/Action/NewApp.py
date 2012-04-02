@@ -10,7 +10,10 @@ import Action.Instances
 def perform(app_type):
     # Perform application type discovery if needed.
     if app_type == 'auto':
-        if os.path.exists('config.ru'):
+        if Config.app_type is not None:
+            print('Using application type from `.veraconf`.')
+            app_type = Config.app_type
+        elif os.path.exists('config.ru'):
             print('Discovered Rails application')
             app_type = 'rails'
         else:

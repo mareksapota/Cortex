@@ -1,12 +1,29 @@
+from __future__ import print_function
+
+import sys
+import socket
+
+import Config
+
 host = None
 port = None
 
-import socket
-
 def init(h, p):
     global host, port
-    host = h
-    port = p
+    if h is None:
+        host = Config.miranda_host
+    else:
+        host = h
+    if p is None:
+        port = Config.miranda_port
+    else:
+        port = p
+    if host is None or port is None:
+        print(
+            'You have to specify Miranda host and port, either in '
+            '`.veraconf` or on the command line.'
+        )
+        sys.exit(1)
 
 class MirandaConnection():
     def __init__(self):
