@@ -18,6 +18,8 @@ module Cortex.Common.ErrorIO
     , iConnectTo
     , iEncode
     , iDecode
+    , iRawSystem
+    , iReadProcess
     ) where
 
 import Control.Monad.Trans (liftIO, MonadIO)
@@ -29,6 +31,8 @@ import Network
 import Data.ByteString.Lazy.Char8 (ByteString)
 import qualified Data.ByteString.Lazy.Char8 as BS
 import Data.Binary (encode, decode, Binary)
+import System.Process (rawSystem, readProcess)
+import System.Exit (ExitCode (ExitSuccess, ExitFailure))
 
 -- IO helpers that report errors through Error monad.
 
@@ -143,3 +147,20 @@ iDecode a = do
     case t of
         Left e -> throwError $ show (e :: SomeException)
         Right r -> return r
+
+-----
+
+iRawSystem :: (MonadError String m, MonadIO m) => String -> [String] -> m ()
+iRawSystem a b = do
+    e <-liftIO $ rawSystem a b
+    iRawSystem' e
+
+iRawSystem' :: (MonadError String m, MonadIO m) => ExitCode -> m ()
+iRawSystem' ExitSuccess = return ()
+iRawSystem' (ExitFailure a) = throwError $ "ExitFailure " ++ (show a)
+
+-----
+
+iReadProcess :: (MonadError String m, MonadIO m) =>
+    String -> [String] -> m String
+iReadProcess a b = ioReport $ readProcess a b ""

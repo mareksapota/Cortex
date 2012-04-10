@@ -106,7 +106,6 @@ chooseConnectionMode "lookup all" = do
     printLog $ "lookup all: " ++ key
     kv <- lift $ S.lookupAll key
     let keys = fst $ unzip kv
-    putLine $ show $ length keys
     forM_ keys putLine
     closeConnection
 

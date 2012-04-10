@@ -10,6 +10,13 @@ extensions (grep for "LANGUAGE" in sources to get a list).  GHC 7.4 is
 recommended, but other compiler could probably be used.  Other compilers were
 not tested and are not supported though.
 
+=== Required packages ===
+ * hinotify
+ * hunit
+ * lifted-base
+ * sha
+ * temporary
+
 == Python ==
 Parts written in Python should work with any 2.7 or 3.2+ compatible
 interpreter/compiler.

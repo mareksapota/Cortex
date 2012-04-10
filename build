@@ -17,6 +17,9 @@ targets = {
             'Miranda/test/Commit_Test'
         ]
     },
+    'saffron' : {
+        'main' : 'Saffron/saffron'
+    },
     'telnet' : {
         'main' : 'Utils/telnet'
     },

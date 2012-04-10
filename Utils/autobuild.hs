@@ -11,6 +11,8 @@ toWatch :: [String]
 toWatch =
     [ "Miranda"
     , "Miranda/test"
+    , "Saffron"
+    , "Saffron/Apps"
     , "Common"
     , "Utils"
     ]

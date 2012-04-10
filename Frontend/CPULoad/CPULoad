@@ -1,6 +1,0 @@
-#!/usr/bin/env python
-
-import os
-
-# Load in last five minutes.
-load = os.getloadavg()[1]

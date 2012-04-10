@@ -1,4 +1,4 @@
-{-# LANGUAGE DefaultSignatures, TypeSynonymInstances, FlexibleInstances, FlexibleContexts #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module Cortex.Common.OptParse
     ( CmdSwitch
@@ -24,7 +24,10 @@ import System.Exit (exitSuccess)
 import Control.Monad.Trans (liftIO, MonadIO)
 import Control.Monad (forM_, liftM)
 import Control.Monad.Error (MonadError, throwError)
-import Data.Maybe (listToMaybe)
+
+import Cortex.Common.MaybeRead
+
+-----
 
 type CmdSwitch = String
 type CmdName = String
@@ -116,11 +119,11 @@ makeSwitchString' (switch:others) =
 
 -- Functions that deal with parsed args.
 
-getOption :: (MonadError String m, OptionRead a) =>
+getOption :: (MonadError String m, MaybeRead a) =>
     CmdParsedArgs -> CmdName -> m (Maybe a)
 getOption parsedArgs name = getOption' (Map.lookup name parsedArgs)
 
-getOption' :: (MonadError String m, OptionRead a) =>
+getOption' :: (MonadError String m, MaybeRead a) =>
     Maybe String -> m (Maybe a)
 getOption' Nothing = return Nothing
 getOption' (Just a) = do
@@ -129,23 +132,7 @@ getOption' (Just a) = do
         Nothing -> throwError "Argument has wrong type"
         Just _ -> return v
 
-getOptionWithDefault :: (MonadError String m, OptionRead a) =>
+getOptionWithDefault :: (MonadError String m, MaybeRead a) =>
     CmdParsedArgs -> CmdName -> a -> m a
 getOptionWithDefault args name defaultValue =
     liftM (maybe defaultValue id) (getOption args name)
-
--- Helpers for value conversion.
-
--- `maybeRead` acts as a version of `read` that reports errors through the Maybe
--- monad.  Additionaly it treats strings differently, not requiring quotation
--- marks around them.
-class OptionRead a where
-    maybeRead :: String -> Maybe a
-    default maybeRead :: Read a => String -> Maybe a
-    maybeRead = fmap fst . listToMaybe . reads
-
-instance OptionRead String where
-    maybeRead s = Just s
-
-instance OptionRead Int
-instance OptionRead Double
