@@ -115,13 +115,22 @@ test13 = runInIOStateError $ do
         (Just "e9d71f5ee7c92d6dc9e92ffdad17b8bd49418f98")
         v
 
+test14 :: Test
+test14 = runInIOStateError $ do
+    a <- C.set "ala::ma" (pack "kota")
+    b <- C.set "host::is" (pack "online")
+    c <- C.delete "ala::ma"
+    let vt = apply c $ apply b $ apply a $ empty
+    v <- lookupAll "" vt
+    return $ assertBool "" $ (==) 1 (length v)
+
 -----
 
 -----
 -- Commit application tests.
 
-test14 :: Test
-test14 = runInIOStateError $ do
+test15 :: Test
+test15 = runInIOStateError $ do
     a <- C.set "a" (pack "a")
     b <- C.set "b" (pack "b")
     c <- C.delete "b"
@@ -148,6 +157,7 @@ tests = TestList
     , test12
     , test13
     , test14
+    , test15
     ]
 
 main :: IO Counts

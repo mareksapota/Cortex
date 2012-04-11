@@ -138,31 +138,33 @@ chooseConnectionMode "sync" = do
         lift $ S.set key (BS.pack "online")
         printLog $ concat ["Marked ", host, " online"]
     rest <- getRest
-    clientSync $ BS.lines rest
+    clientSync (BS.lines rest) 0
     printLog "sync request done"
 
 chooseConnectionMode _ = throwError "Unknown connection mode"
 
-clientSync :: [ByteString] -> ConnectedMonadStack ()
-clientSync [] = throwError "Expected more lines"
-clientSync (h:t) = do
+-- Answer questions about present commits.
+clientSync :: [ByteString] -> Int -> ConnectedMonadStack ()
+clientSync [] _ = throwError "Expected more lines"
+clientSync (h:t) n = do
     let hash = BS.unpack h
-    when (hash /= "done") $ do
-        member <- lift $ S.member hash
-        if member
-            then putLine "yes"
-            else do
-                -- This has to be done before `clientSync'` starts waiting for a
-                -- new line.
-                putLine "no"
-                clientSync' t
+    member <- lift $ S.member hash
+    if member || (hash == "done")
+        then do
+            putLine "yes"
+            clientSync' t n
+        else do
+            putLine "no"
+            clientSync t (n + 1)
 
-clientSync' :: [ByteString] -> ConnectedMonadStack ()
-clientSync' [] = throwError "Expected more lines"
-clientSync' (cs:t) = do
-    c <- lift $ C.fromString cs
+-- Collect remote commits.
+clientSync' :: [ByteString] -> Int -> ConnectedMonadStack ()
+clientSync' _ 0 = return ()
+clientSync' [] _ = throwError "Expected more lines"
+clientSync' (h:t) n = do
+    c <- lift $ C.fromString h
     lift $ S.insert c
-    clientSync t
+    clientSync' t (n - 1)
 
 -----
 
@@ -196,26 +198,41 @@ performSync selfHost hostString = do
         reportError :: String -> GrandMonadStack ()
         reportError e = do
             printLocalLog $ "Error: " ++ e
+            printLocalLog $ concat ["Marking ", hostString, " offline"]
             S.set ("host::availability::" ++ hostString) (BS.pack "offline")
 
+-- Commits are first collected, then transmitted so they can be sent in oldest
+-- to newest order.  This means they can be applied on the other side without
+-- any unnecessary rebasing.
 performSync' :: String -> ConnectedMonadStack ()
 performSync' selfHost = do
     putLine "sync"
     putLine selfHost
     commits <- lift S.getCommits
-    performSync'' commits
+    toTransmit <- performSync'' commits []
+    performSync''' toTransmit
     closeConnection
 
-performSync'' :: [Commit] -> ConnectedMonadStack ()
-performSync'' [] = putLine "done"
+performSync'' :: [Commit] -> [Commit] -> ConnectedMonadStack [Commit]
+performSync'' [] t = do
+    putLine "done"
+    -- Collect "yes" answer from remote.
+    getLine
+    return t
 
-performSync'' (c:commits) = do
+performSync'' (c:commits) t = do
     putLine $ C.getHash c
     l <- getLine
-    when (l == "no") $ do
-        cs <- lift $ C.toString c
-        putbLine cs
-        performSync'' commits
+    if (l == "no")
+        then performSync'' commits (c:t)
+        else return t
+
+performSync''' :: [Commit] -> ConnectedMonadStack ()
+performSync''' [] = putLine "done"
+performSync''' (h:t) = do
+    cs <- lift $ C.toString h
+    putbLine cs
+    performSync''' t
 
 -----
 
