@@ -3,6 +3,7 @@
 *.py[co]
 Miranda/miranda
 Miranda/test/Commit_Test
+Miranda/test/CommitList_Test
 Miranda/test/ValueTree_Test
 Utils/autobuild
 Utils/telnet

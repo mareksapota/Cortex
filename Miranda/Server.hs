@@ -203,7 +203,7 @@ performSync' selfHost = do
     putLine "sync"
     putLine selfHost
     commits <- lift S.getCommits
-    performSync'' (reverse commits)
+    performSync'' commits
     closeConnection
 
 performSync'' :: [Commit] -> ConnectedMonadStack ()

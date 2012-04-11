@@ -19,6 +19,7 @@ run :: Int -> String -> AppManagerMonadStack (MVar (), MVar Int)
 run port location = do
     stop <- newEmptyMVar
     finished <- newEmptyMVar
+    -- TODO: Put this in prepare, no need to do this more than once.
     ignoreError $ iRawSystem "cp" ["Saffron/Apps/static.ru", location]
     fork $ do
         { p <- liftIO $ runCommand $ "thin -R '../static.ru' -c '" ++
