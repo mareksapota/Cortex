@@ -55,7 +55,7 @@ run port location = do
                     [  app
                     , " instance on port "
                     , show port
-                    , " accortding to Mirands doesn't exist, stopping"
+                    , " accortding to Miranda doesn't exist, stopping"
                     ]
                 ; tryPutMVar stop ()
                 ; return ()
