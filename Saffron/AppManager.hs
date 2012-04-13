@@ -55,26 +55,29 @@ runAppManager' = do
     { (_, _, app, mv) <- get
     ; iPutStrLn stderr $ "Running app manager for a new app: " ++ app
     ; lock <- newEmptyMVar
-    ; t1 <- addTimer lock checkSource
-    ; t2 <- addTimer lock addInstance
-    ; t3 <- addTimer lock killInstance
+    ; t1 <- addTimer lock Config.managerUpdateTime checkSource
+    ; t2 <- addTimer lock Config.managerUpdateTime addInstance
+    -- Don't kill too often, let the CPU use drop between kills.
+    ; t3 <- addTimer lock Config.instanceDeleteTime killInstance
+    ; t4 <- addTimer lock Config.instanceDeleteTime cleanInstances
     ; takeMVar lock
     ; stopTimer t1
     ; stopTimer t2
     ; stopTimer t3
+    ; stopTimer t4
     ; (threads, _, _, location) <- takeMVar mv
-    ; ignoreError (killThreads threads)
+    ; ignoreError (killAllThreads threads)
     ; ignoreError (removeLocation location)
     } `catchError` (\e -> iPutStrLn stderr $ "Error: " ++ e)
 
 -----
 -- WARNING: Make sure that timers leave consistent state even if some operation
--- throws errors.
+-- throws errors.  Dirty state is also a consistent state.
 
-addTimer :: MVar () ->
+addTimer :: MVar () -> Double ->
     (AppManagerState -> AppManagerMonadStack ()) ->
     AppManagerMonadStack TimerHandle
-addTimer lock s = periodicTimer Config.managerUpdateTime $ do
+addTimer lock t s = periodicTimer t $ do
     (_, _, _, mv) <- get
     -- Take the big lock, make sure only one timer is running.
     (a, b, c, d) <- takeMVar mv
@@ -111,7 +114,7 @@ checkSource (threads, appType, sourceHash, location) = do
     ; when ((appType' /= newAppType) || (sourceHash' /= newSourceHash)) $ do
         { (host, port, app, _) <- get
         ; iPutStrLn stderr $ "Reloading app manager: " ++ app
-        ; killThreads threads
+        ; killAllThreads threads
         ; removeLocation location
         ; when (not $ Set.member newAppType knownAppTypes) $
             throwError $ "Unsupported app type: " ++ newAppType
@@ -198,7 +201,32 @@ killInstance (threads, _, _, _) = do
     when (act1 || act2) $ do
         (_, _, app, _) <- get
         iPutStrLn stderr $ "Killing an instance of " ++ app
-        killThread threads
+        killOneThread threads
+
+-----
+-- Remove dead instances from list.  Instance can die if server subprocess died
+-- or someone remove info about this instance from Miranda.  Use this only under
+-- the big lock.
+
+cleanInstances :: AppManagerState -> AppManagerMonadStack ()
+cleanInstances (mv, _, _, _) = do
+    dirty <- isEmptyMVar mv
+    when dirty $ throwError "Dirty state encountered"
+    threads <- takeMVar mv
+    threads' <- cleanInstances' threads []
+    putMVar mv threads'
+
+cleanInstances' :: [(MVar (), MVar Int)] -> [(MVar (), MVar Int)] ->
+    AppManagerMonadStack [(MVar (), MVar Int)]
+cleanInstances' [] l = return l
+cleanInstances' (t:rest) l = do
+    alive <- isEmptyMVar (snd t)
+    if alive
+        then cleanInstances' rest (t:l)
+        else do
+            -- Notify Miranda about this dead instance.
+            killThread t
+            cleanInstances' rest l
 
 -----
 -- Self load and average load of all hosts.
@@ -269,46 +297,43 @@ makeNewLocation mv = do
 -----
 -- Kill all instances.  Use this only under the big lock.
 
-killThreads :: MVar [(MVar (), MVar Int)] -> AppManagerMonadStack ()
-killThreads mv = do
+killAllThreads :: MVar [(MVar (), MVar Int)] -> AppManagerMonadStack ()
+killAllThreads mv = do
     dirty <- isEmptyMVar mv
     when dirty $ throwError "Dirty state encountered"
     threads <- takeMVar mv
-    forM_ (fst $ unzip threads) ((flip putMVar) ())
-    ports <- forM (snd $ unzip threads) takeMVar
+    forM_ threads killThread
     putMVar mv []
-
-    -- Notify Miranda.
-    (h, p, app, _) <- get
-    forM_ ports $ \port -> do
-        { hdl <- iConnectTo h p
-        ; iPutStrLn hdl "delete"
-        ; iPutStrLn hdl $ concat
-            [ "app::instance::"
-            , app
-            , "::"
-            , Config.host
-            , ":"
-            , show port
-            ]
-        ; iClose hdl
-        }
 
 -----
 -- Kill one instance.  Use this only under the big lock.
 
-killThread :: MVar [(MVar (), MVar Int)] -> AppManagerMonadStack ()
-killThread mv = do
+killOneThread :: MVar [(MVar (), MVar Int)] -> AppManagerMonadStack ()
+killOneThread mv = do
     dirty <- isEmptyMVar mv
     when dirty $ throwError "Dirty state encountered"
     threads <- takeMVar mv
-    threads' <- killThread' threads
+    threads' <- killOneThread' threads
     putMVar mv threads'
 
-killThread' :: [(MVar (), MVar Int)] -> AppManagerMonadStack [(MVar (), MVar Int)]
-killThread' [] = return []
-killThread' (t:rest) = do
-    putMVar (fst t) ()
+killOneThread' :: [(MVar (), MVar Int)] ->
+    AppManagerMonadStack [(MVar (), MVar Int)]
+killOneThread' [] = return []
+killOneThread' (t:rest) = do
+    alive <- isEmptyMVar (snd t)
+    -- Notify Miranda even when the thread is dead.
+    killThread t
+    if alive
+        then return rest
+        -- This thread was already dead.
+        else killOneThread' rest
+
+-----
+
+killThread :: (MVar (), MVar Int) -> AppManagerMonadStack ()
+killThread t = do
+    -- Use non blocking version in case something else killed this thread.
+    tryPutMVar (fst t) ()
     port <- takeMVar (snd t)
 
     -- Notify Miranda.
@@ -325,7 +350,13 @@ killThread' (t:rest) = do
         ]
     iClose hdl
 
-    return rest
+    iPutStrLn stderr $ concat
+        [ "Instance of "
+        , app
+        , " running on port "
+        , show port
+        , " is dead"
+        ]
 
 -----
 -- Use this only under the big lock.

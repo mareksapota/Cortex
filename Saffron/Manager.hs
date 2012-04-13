@@ -41,8 +41,8 @@ runManager' = do
     eventLoop
 
 -----
--- This function doesn't generate errors.  Two instances of this function should
--- not run simultaneously.
+-- This function doesn't (or shouldn't =D) generate errors.  Two instances of
+-- this function should not run simultaneously.
 
 updateManager :: ManagerMonadStack ()
 updateManager = do
