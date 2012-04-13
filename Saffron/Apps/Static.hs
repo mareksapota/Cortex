@@ -8,7 +8,13 @@ import Control.Concurrent.Lifted
 import Control.Monad.State
 import Control.Monad.Error (catchError)
 import System.IO (stderr)
-import System.Process (runCommand, waitForProcess, terminateProcess)
+import System.Process
+    ( runCommand
+    , waitForProcess
+    , terminateProcess
+    , getProcessExitCode
+    )
+import Data.Maybe (isNothing)
 
 import Cortex.Saffron.GrandMonadStack
 import qualified Cortex.Saffron.Config as Config
@@ -42,14 +48,18 @@ run port location = do
         -- Stop if Miranda thinks this instance doesn't exist.
         ; fork $ do
             { while (amIAlive port)
-            ; iPutStrLn stderr $ concat
-                [  app
-                , " instance on port "
-                , show port
-                , " accortding to Mirands doesn't exist, stopping"
-                ]
-            ; tryPutMVar stop ()
-            ; return ()
+            ; e <- liftIO $ getProcessExitCode proc
+            -- No need to kill this instance if it's already dead.
+            ; when (isNothing e) $ do
+                { iPutStrLn stderr $ concat
+                    [  app
+                    , " instance on port "
+                    , show port
+                    , " accortding to Mirands doesn't exist, stopping"
+                    ]
+                ; tryPutMVar stop ()
+                ; return ()
+                }
             }
 
         ; liftIO $ waitForProcess proc

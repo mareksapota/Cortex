@@ -13,6 +13,7 @@ toWatch =
     , "Miranda/test"
     , "Saffron"
     , "Saffron/Apps"
+    , "G23"
     , "Common"
     , "Utils"
     ]

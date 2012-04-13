@@ -1,9 +1,9 @@
 {-# LANGUAGE FlexibleContexts, ScopedTypeVariables #-}
 
 module Cortex.Common.ErrorIO
-    ( iSetNewlineMode
-    , iSetBuffering
+    ( iSetBuffering
     , iGetLine
+    , iGetChar
     , ibGetContents
     , iOpen
     , iPersistentOpen
@@ -47,12 +47,6 @@ ioReport f = do
 
 -----
 
-iSetNewlineMode :: (MonadError String m, MonadIO m) =>
-    Handle -> NewlineMode -> m ()
-iSetNewlineMode a b = ioReport $ hSetNewlineMode a b
-
------
-
 iSetBuffering :: (MonadError String m, MonadIO m) =>
     Handle -> BufferMode -> m ()
 iSetBuffering a b = ioReport $ hSetBuffering a b
@@ -60,7 +54,19 @@ iSetBuffering a b = ioReport $ hSetBuffering a b
 -----
 
 iGetLine :: (MonadError String m, MonadIO m) => Handle -> m String
-iGetLine a = ioReport $ hGetLine a
+iGetLine a = iGetLine' a []
+
+iGetLine' :: (MonadError String m, MonadIO m) => Handle -> String -> m String
+iGetLine' hdl s = do
+    c <- iGetChar hdl
+    if c == '\n'
+        then return $ reverse s
+        else iGetLine' hdl (c:s)
+
+-----
+
+iGetChar :: (MonadError String m, MonadIO m) => Handle -> m Char
+iGetChar a = ioReport $ hGetChar a
 
 -----
 
@@ -97,7 +103,9 @@ iFlush a = ioReport $ hFlush a
 -----
 
 iPutStrLn :: (MonadError String m, MonadIO m) => Handle -> String -> m ()
-iPutStrLn a b = ioReport $ hPutStrLn a b
+iPutStrLn a b = do
+    ioReport $ hPutStr a b
+    ioReport $ hPutChar a '\n'
 
 -----
 

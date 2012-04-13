@@ -27,6 +27,7 @@ import qualified Data.ByteString.Lazy.Char8 as BS
 
 import Cortex.Common.ErrorIO
 import Cortex.Common.Event
+import Cortex.Common.MaybeRead
 import Cortex.Miranda.Commit (Commit)
 import qualified Cortex.Miranda.Commit as C
 import qualified Cortex.Miranda.Storage as S
@@ -188,7 +189,9 @@ performSync :: String -> String -> GrandMonadStack ()
 performSync selfHost hostString = do
     printLocalLog $ "Synchronising with " ++ hostString
     let host = takeWhile (/= ':') hostString
-    let (port :: Int) = read $ tail $ dropWhile (/= ':') hostString
+    let (port' :: Maybe Int) = maybeRead $ tail $ dropWhile (/= ':') hostString
+    when (isNothing port') $ throwError "Malformed host:port line"
+    let port = fromJust port'
     do
         { hdl <- iConnectTo host port
         ; evalStateT (performSync' selfHost) (hdl, host, port)

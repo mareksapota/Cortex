@@ -21,6 +21,9 @@ targets = {
     'saffron' : {
         'main' : 'Saffron/saffron'
     },
+    'g23' : {
+        'main' : 'G23/g23'
+    },
     'telnet' : {
         'main' : 'Utils/telnet'
     },

@@ -71,6 +71,7 @@ stopTimer hdl = do
     putMVar hdl ()
 
 -----
+-- Infinite loop of sleeps.
 
 eventLoop :: (MonadBase IO m) => m ()
 eventLoop = do

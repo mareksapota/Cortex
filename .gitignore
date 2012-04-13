@@ -5,5 +5,7 @@ Miranda/miranda
 Miranda/test/Commit_Test
 Miranda/test/CommitList_Test
 Miranda/test/ValueTree_Test
+Saffron/saffron
+G23/g23
 Utils/autobuild
 Utils/telnet
