@@ -75,10 +75,10 @@ parser.add_argument(
     help = 'New application type (default is auto discovery).'
 )
 parser.add_argument(
-    '--balancer-port',
-    dest = 'balancer_port',
+    '--ariel-port',
+    dest = 'ariel_port',
     type = int,
-    help = 'Load balancer port for this app.'
+    help = 'Ariel port for this app.'
 )
 #####
 
@@ -100,7 +100,7 @@ elif args.action == 'info':
     Action.Info.perform()
 elif args.action == 'new_app':
     Action.NewApp.perform(args.app_type)
-elif args.balancer_port is not None:
-    Action.Port.perform(args.balancer_port)
+elif args.ariel_port is not None:
+    Action.Port.perform(args.ariel_port)
 else:
     print('You have to specify an action.')

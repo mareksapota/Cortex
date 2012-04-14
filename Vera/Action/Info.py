@@ -23,7 +23,7 @@ def runningInstances():
     m.send('app::instance::{0}'.format(Config.name))
     response = m.recv_all()
     m.close()
-    return len(response.split('\n'))
+    return len(response.split('\n')) - 1
 
 def perform():
     try:
