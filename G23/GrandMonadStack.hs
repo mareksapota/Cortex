@@ -3,10 +3,8 @@ module Cortex.G23.GrandMonadStack
     , GrandMonadStack
     ) where
 
-import Control.Concurrent.Lifted (MVar)
 import Control.Monad.State (StateT)
 import Control.Monad.Error (ErrorT)
-import Data.Set (Set)
 
 type LesserMonadStack = ErrorT String IO
 

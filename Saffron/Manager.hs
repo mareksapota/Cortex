@@ -56,9 +56,6 @@ updateManager = do
     ; forM_ (BS.lines apps) tryAddApp
     } `catchError` reportError
     where
-        reportError :: String -> ManagerMonadStack ()
-        reportError e = iPutStrLn stderr $ "Error: " ++ e
-
         tryAddApp :: ByteString -> ManagerMonadStack ()
         tryAddApp app' = do
             let app = BS.unpack app'

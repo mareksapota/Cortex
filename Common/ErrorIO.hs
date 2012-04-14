@@ -20,6 +20,9 @@ module Cortex.Common.ErrorIO
     , iDecode
     , iRawSystem
     , iReadProcess
+    , iOpenTempFile
+    , iWriteFile
+    , iReadFile
     ) where
 
 import Control.Monad.Trans (liftIO, MonadIO)
@@ -172,3 +175,25 @@ iRawSystem' (ExitFailure a) = throwError $ "ExitFailure " ++ (show a)
 iReadProcess :: (MonadError String m, MonadIO m) =>
     String -> [String] -> m String
 iReadProcess a b = ioReport $ readProcess a b ""
+
+-----
+
+iOpenTempFile :: (MonadError String m, MonadIO m) => String -> String ->
+    m (String, Handle)
+iOpenTempFile a b = ioReport $ openTempFile a b
+
+-----
+
+iWriteFile :: (MonadError String m, MonadIO m) => String -> String -> m ()
+iWriteFile path str = do
+    hdl <- iOpen path WriteMode
+    iPutStr hdl str
+    iClose hdl
+
+-----
+
+iReadFile :: (MonadError String m, MonadIO m) => String -> m String
+iReadFile path = do
+    hdl <- iOpen path ReadMode
+    str <- ibGetContents hdl
+    return $ BS.unpack str

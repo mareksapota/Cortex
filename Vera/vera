@@ -13,6 +13,7 @@ import Action.AddNode
 import Action.Instances
 import Action.Info
 import Action.NewApp
+import Action.Port
 
 #####
 # Command line options.
@@ -73,6 +74,12 @@ parser.add_argument(
     default = 'auto',
     help = 'New application type (default is auto discovery).'
 )
+parser.add_argument(
+    '--balancer-port',
+    dest = 'balancer_port',
+    type = int,
+    help = 'Load balancer port for this app.'
+)
 #####
 
 #####
@@ -93,5 +100,7 @@ elif args.action == 'info':
     Action.Info.perform()
 elif args.action == 'new_app':
     Action.NewApp.perform(args.app_type)
+elif args.balancer_port is not None:
+    Action.Port.perform(args.balancer_port)
 else:
     print('You have to specify an action.')

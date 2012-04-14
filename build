@@ -24,6 +24,9 @@ targets = {
     'g23' : {
         'main' : 'G23/g23'
     },
+    'ariel' : {
+        'main' : 'Ariel/ariel'
+    },
     'telnet' : {
         'main' : 'Utils/telnet'
     },

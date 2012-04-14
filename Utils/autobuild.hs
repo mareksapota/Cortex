@@ -14,6 +14,7 @@ toWatch =
     , "Saffron"
     , "Saffron/Apps"
     , "G23"
+    , "Ariel"
     , "Common"
     , "Utils"
     ]

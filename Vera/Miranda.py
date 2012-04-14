@@ -46,6 +46,10 @@ class MirandaConnection():
         # Remove new line character from msg.
         return msg[:-1]
 
+    def recv_all(self):
+        # Remove last new line character.
+        return self.f.read()[:-1]
+
     def close(self):
         self.f.close()
         self.s.close()

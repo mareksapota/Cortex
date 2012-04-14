@@ -14,6 +14,7 @@ import Data.Maybe (isNothing, fromJust)
 import Cortex.G23.GrandMonadStack
 import qualified Cortex.G23.Config as Config
 import Cortex.Common.ErrorIO
+import Cortex.Common.Error
 import Cortex.Common.Event
 import Cortex.Common.MaybeRead
 
@@ -89,10 +90,5 @@ remove' key = do
     ; iClose hdl
     ; iPutStrLn stderr $ "Detected a dead instance: " ++ key
     }
-
------
-
-reportError :: String -> GrandMonadStack ()
-reportError e = iPutStrLn stderr $ "Error: " ++ e
 
 -----

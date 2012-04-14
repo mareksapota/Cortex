@@ -27,6 +27,7 @@ import qualified Data.ByteString.Lazy.Char8 as BS
 
 import Cortex.Common.ErrorIO
 import Cortex.Common.Event
+import Cortex.Common.Error
 import Cortex.Common.MaybeRead
 import Cortex.Miranda.Commit (Commit)
 import qualified Cortex.Miranda.Commit as C
@@ -59,20 +60,12 @@ runServer serverPort = do
             -- Ignore result of fork and return proper type.
             return ()
 
-        reportError :: String -> GrandMonadStack ()
-        reportError e = do
-            -- If this operation throws an error, accept loop will exit.
-            printLocalLog $ "Error: " ++ e
-
 -----
 
 -- `fork` discards errors, so `reportError` from `runServer` won't report them,
 -- they have to be caught here.
 handleConnection :: ConnectedMonadStack ()
 handleConnection = catchError handleConnection' reportError
-    where
-        reportError :: String -> ConnectedMonadStack ()
-        reportError e = printLog $ "Error: " ++ e
 
 handleConnection' :: ConnectedMonadStack ()
 handleConnection' = do
@@ -108,6 +101,16 @@ chooseConnectionMode "lookup all" = do
     kv <- lift $ S.lookupAll key
     let keys = fst $ unzip kv
     forM_ keys putLine
+    closeConnection
+
+chooseConnectionMode "lookup all with value" = do
+    key <- getLine
+    printLog $ "lookup all: " ++ key
+    kv <- lift $ S.lookupAll key
+    forM_ kv $ \(k, v) -> do
+        { putLine k
+        ; putbLine v
+        }
     closeConnection
 
 chooseConnectionMode "lookup hash" = do
@@ -195,11 +198,11 @@ performSync selfHost hostString = do
     do
         { hdl <- iConnectTo host port
         ; evalStateT (performSync' selfHost) (hdl, host, port)
-        } `catchError` reportError
+        } `catchError` reportSyncError
     printLocalLog $ "Synchronisation with " ++ hostString ++ " done"
     where
-        reportError :: String -> GrandMonadStack ()
-        reportError e = do
+        reportSyncError :: String -> GrandMonadStack ()
+        reportSyncError e = do
             printLocalLog $ "Error: " ++ e
             printLocalLog $ concat ["Marking ", hostString, " offline"]
             S.set ("host::availability::" ++ hostString) (BS.pack "offline")
@@ -248,10 +251,10 @@ readValueStorage = do
     ; vs <- ibGetContents hdl
     ; S.read vs
     ; printLocalLog $ "Storage was successfully read"
-    } `catchError` reportError
+    } `catchError` reportStorageError
     where
-        reportError :: String -> GrandMonadStack ()
-        reportError e = do
+        reportStorageError :: String -> GrandMonadStack ()
+        reportStorageError e = do
             printLocalLog $ "Couldn't read storage: " ++ e
 
 -----
@@ -271,10 +274,10 @@ saveValueStorage = do
     -- End of lazy IO hack.
     ; liftIO $ rawSystem "mv" [tmp, location]
     ; printLocalLog $ "Saved storage to " ++ location
-    } `catchError` reportError
+    } `catchError` reportStorageError
     where
-        reportError :: String -> GrandMonadStack ()
-        reportError e = do
+        reportStorageError :: String -> GrandMonadStack ()
+        reportStorageError e = do
             printLocalLog $ "Saving storage failed: " ++ e
 
 -----

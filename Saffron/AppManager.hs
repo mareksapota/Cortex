@@ -91,9 +91,6 @@ addTimer lock t s = periodicTimer t $ do
             when (isDirty') $ tryPutMVar lock () >> return ()
             putMVar mv (a, b, c, d)
     where
-        reportError :: String -> AppManagerMonadStack ()
-        reportError e = iPutStrLn stderr $ "Error: " ++ e
-
         dirty :: MonadBase IO m => MVar a -> MVar b -> MVar c -> MVar d ->
             m Bool
         dirty a b c d = do
@@ -282,6 +279,8 @@ removeLocation' (Just location) = iRawSystem "rm" ["-rf", location]
 
 -----
 -- Use this only under the big lock.
+--
+-- TODO: Location is never removed if Saffron is killed by a signal.
 
 makeNewLocation :: MVar (Maybe String) -> AppManagerMonadStack String
 makeNewLocation mv = do
