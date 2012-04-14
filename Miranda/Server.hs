@@ -105,7 +105,7 @@ chooseConnectionMode "lookup all" = do
 
 chooseConnectionMode "lookup all with value" = do
     key <- getLine
-    printLog $ "lookup all: " ++ key
+    printLog $ "lookup all with value: " ++ key
     kv <- lift $ S.lookupAll key
     forM_ kv $ \(k, v) -> do
         { putLine k

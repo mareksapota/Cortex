@@ -15,8 +15,8 @@ import System.IO (stderr)
 import Control.Concurrent.Lifted hiding (killThread)
 import Data.ByteString.Lazy.Char8 (ByteString)
 import qualified Data.ByteString.Lazy.Char8 as BS
-import Data.Set (Set)
-import qualified Data.Set as Set
+import Data.Map (Map)
+import qualified Data.Map as Map
 import System.IO.Temp (createTempDirectory)
 import Data.Maybe (catMaybes, fromJust, isNothing, isJust)
 import System.Random (randomRIO)
@@ -32,10 +32,13 @@ import qualified Cortex.Saffron.Apps.Static as AppStatic
 
 -----
 
-knownAppTypes :: Set String
-knownAppTypes = Set.fromList
-    [ "static"
-    -- , "rails"
+knownAppTypes :: Map String
+    ( String -> AppManagerMonadStack ()
+    , Int -> String -> AppManagerMonadStack (MVar (), MVar Int)
+    )
+
+knownAppTypes = Map.fromList
+    [ ("static", (AppStatic.prepare, AppStatic.run))
     ]
 
 -----
@@ -113,7 +116,7 @@ checkSource (threads, appType, sourceHash, location) = do
         ; iPutStrLn stderr $ "Reloading app manager: " ++ app
         ; killAllThreads threads
         ; removeLocation location
-        ; when (not $ Set.member newAppType knownAppTypes) $
+        ; when (not $ Map.member newAppType knownAppTypes) $
             throwError $ "Unsupported app type: " ++ newAppType
         ; newLocation <- makeNewLocation location
         ; takeMVar appType
@@ -127,6 +130,7 @@ checkSource (threads, appType, sourceHash, location) = do
             , app
             , newLocation
             ]
+        ; (fst (knownAppTypes Map.! newAppType)) newLocation
         ; putMVar appType newAppType
         ; putMVar sourceHash newSourceHash
         }
@@ -158,7 +162,7 @@ cmpLoad f = do
 -----
 
 addInstance :: AppManagerState -> AppManagerMonadStack ()
-addInstance (threads, _, _, location) = do
+addInstance (threads, appType, _, location) = do
     act1 <- cmpInstances (<)
     act2 <- cmpLoad (\a b -> a - b < 0.1)
     -- Can't run if there is no source.
@@ -166,12 +170,13 @@ addInstance (threads, _, _, location) = do
     let act3 = isJust location'
     when (act1 && act2 && act3) $ do
         (h, p, app, _) <- get
+        appType' <- readMVar appType
         -- Pick a random port, if it's taken then this instance will get killed,
         -- but it's OK, another one will take it's place.
         port <- liftIO $ randomRIO (1025, 65535)
         iPutStrLn stderr $ "Running a new instance of " ++ app ++
             " on port " ++ (show port)
-        a <- AppStatic.run port (fromJust location')
+        a <- (snd (knownAppTypes Map.! appType')) port (fromJust location')
         addThread a threads
         -- Notify Miranda.
         hdl <- iConnectTo h p
