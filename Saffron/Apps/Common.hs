@@ -10,8 +10,7 @@ import Control.Monad.State
 import Control.Monad.Error (catchError)
 import System.IO (stderr)
 import System.Process
-    ( runCommand
-    , waitForProcess
+    ( waitForProcess
     , terminateProcess
     , getProcessExitCode
     )
@@ -29,13 +28,13 @@ prepare f = ignoreError f
 
 -----
 
-run :: Int -> String -> AppManagerMonadStack (MVar (), MVar Int)
-run port cmd = do
+run :: Int -> String -> [String] -> AppManagerMonadStack (MVar (), MVar Int)
+run port cmd args = do
     (_, _, app, _) <- get
     stop <- newEmptyMVar
     finished <- newEmptyMVar
     fork $ do
-        { proc <- liftIO $ runCommand cmd
+        { proc <- iRunProcess cmd args
 
         ; fork $ do
             { takeMVar stop

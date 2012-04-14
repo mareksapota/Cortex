@@ -16,6 +16,7 @@ not tested and are not supported though.
  * lifted-base
  * sha
  * temporary
+ * hstringtemplate
 
 == Python ==
 Parts written in Python should work with any 2.7 or 3.2+ compatible

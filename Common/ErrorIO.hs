@@ -20,6 +20,7 @@ module Cortex.Common.ErrorIO
     , iDecode
     , iRawSystem
     , iReadProcess
+    , iRunProcess
     , iOpenTempFile
     , iWriteFile
     , iReadFile
@@ -34,7 +35,7 @@ import Network
 import Data.ByteString.Lazy.Char8 (ByteString)
 import qualified Data.ByteString.Lazy.Char8 as BS
 import Data.Binary (encode, decode, Binary)
-import System.Process (rawSystem, readProcess)
+import System.Process (rawSystem, readProcess, runProcess, ProcessHandle)
 import System.Exit (ExitCode (ExitSuccess, ExitFailure))
 
 -- IO helpers that report errors through Error monad.
@@ -175,6 +176,13 @@ iRawSystem' (ExitFailure a) = throwError $ "ExitFailure " ++ (show a)
 iReadProcess :: (MonadError String m, MonadIO m) =>
     String -> [String] -> m String
 iReadProcess a b = ioReport $ readProcess a b ""
+
+-----
+
+iRunProcess :: (MonadError String m, MonadIO m) => String -> [String] ->
+    m ProcessHandle
+iRunProcess cmd args = ioReport $ runProcess cmd args Nothing Nothing
+    Nothing Nothing Nothing
 
 -----
 
