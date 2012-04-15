@@ -249,8 +249,8 @@ getLoad = do
     ; let avg = if (null values)
             then 0.0
             else (sum values) / (fromIntegral $ length values)
-    ; self <- (liftM maybeRead) $ iReadProcess "Saffron/CPULoad.py" []
-    ; when (isNothing self) $ throwError "CPULoad.py didn't return a Double"
+    ; self <- (liftM maybeRead) $ iReadProcess "Saffron/Load.py" []
+    ; when (isNothing self) $ throwError "Load.py didn't return a Double"
     ; return (fromJust self, avg)
     }
     where

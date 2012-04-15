@@ -69,11 +69,11 @@ updateManager = do
                 return ()
 
 -----
--- Update CPU load of this host.
+-- Update load of this host.
 
 updateLoad :: ManagerMonadStack ()
 updateLoad = do
-    { load <- iReadProcess "Saffron/CPULoad.py" []
+    { load <- iReadProcess "Saffron/Load.py" []
     ; (host, port, _) <- get
     ; hdl <- iConnectTo host port
     ; iPutStrLn hdl "set"
