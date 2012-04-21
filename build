@@ -15,7 +15,8 @@ targets = {
         'test' : [
             'Miranda/test/ValueTree_Test',
             'Miranda/test/Commit_Test',
-            'Miranda/test/CommitList_Test'
+            'Miranda/test/CommitList_Test',
+            'Miranda/test/performance/check'
         ]
     },
     'saffron' : {

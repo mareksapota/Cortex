@@ -39,6 +39,6 @@ main' = do
     iSetBuffering stderr LineBuffering
     options <- makeArgs
     args <- OptParse.evalArgs options
-    (host :: String) <- OptParse.getOptionWithDefault args "port" "127.0.0.1"
+    (host :: String) <- OptParse.getOptionWithDefault args "host" "127.0.0.1"
     (port :: Int) <- OptParse.getOptionWithDefault args "port" 8205
     runAlive host port

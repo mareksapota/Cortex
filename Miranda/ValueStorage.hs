@@ -92,7 +92,8 @@ lookupAllWhere key f (ValueStorage vt _) = VT.lookupAllWhere key f vt
 -----
 
 insert :: Commit -> ValueStorage -> ValueStorage
-insert c (ValueStorage vt cl) = let (cl', r) = CL.insert c cl in
+insert c (ValueStorage vt cl) = do
+    let (cl', r) = CL.insert c cl
     ValueStorage (foldl (flip VT.apply) vt r) cl'
 
 -----

@@ -11,3 +11,6 @@ syncServers = 2
 
 storageTime :: Double
 storageTime = 60.0
+
+writeLog :: Bool
+writeLog = False

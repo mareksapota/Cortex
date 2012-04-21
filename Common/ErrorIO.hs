@@ -37,6 +37,7 @@ import qualified Data.ByteString.Lazy.Char8 as BS
 import Data.Binary (encode, decode, Binary)
 import System.Process (rawSystem, readProcess, runProcess, ProcessHandle)
 import System.Exit (ExitCode (ExitSuccess, ExitFailure))
+import Control.Concurrent (yield)
 
 -- IO helpers that report errors through Error monad.
 
@@ -58,11 +59,11 @@ iSetBuffering a b = ioReport $ hSetBuffering a b
 -----
 
 iGetLine :: (MonadError String m, MonadIO m) => Handle -> m String
-iGetLine a = iGetLine' a []
+iGetLine a = ioReport $ iGetLine' a []
 
-iGetLine' :: (MonadError String m, MonadIO m) => Handle -> String -> m String
+iGetLine' :: Handle -> String -> IO String
 iGetLine' hdl s = do
-    c <- iGetChar hdl
+    c <- hGetChar hdl
     if c == '\n'
         then return $ reverse s
         else iGetLine' hdl (c:s)
@@ -91,7 +92,11 @@ iPersistentOpen a b = do
     where
         handle (Right v) = return v
         handle (Left e)
-            | isAlreadyInUseError e = iPersistentOpen a b
+            | isAlreadyInUseError e = do
+                -- Use active waiting only if no other threads are available to
+                -- run.
+                liftIO yield
+                iPersistentOpen a b
             | otherwise = throwError $ show e
 
 -----
@@ -107,16 +112,16 @@ iFlush a = ioReport $ hFlush a
 -----
 
 iPutStrLn :: (MonadError String m, MonadIO m) => Handle -> String -> m ()
-iPutStrLn a b = do
-    ioReport $ hPutStr a b
-    ioReport $ hPutChar a '\n'
+iPutStrLn a b = ioReport $ do
+    hPutStr a b
+    hPutChar a '\n'
 
 -----
 
 ibPutStrLn :: (MonadError String m, MonadIO m) => Handle -> ByteString -> m ()
-ibPutStrLn a b = do
-    ibPutStr a b
-    ioReport $ BS.hPut a $ BS.pack "\n"
+ibPutStrLn a b = ioReport $ do
+    BS.hPut a b
+    BS.hPut a $ BS.pack "\n"
 
 -----
 
@@ -164,7 +169,7 @@ iDecode a = do
 
 iRawSystem :: (MonadError String m, MonadIO m) => String -> [String] -> m ()
 iRawSystem a b = do
-    e <-liftIO $ rawSystem a b
+    e <- liftIO $ rawSystem a b
     iRawSystem' e
 
 iRawSystem' :: (MonadError String m, MonadIO m) => ExitCode -> m ()
@@ -193,15 +198,15 @@ iOpenTempFile a b = ioReport $ openTempFile a b
 -----
 
 iWriteFile :: (MonadError String m, MonadIO m) => String -> String -> m ()
-iWriteFile path str = do
-    hdl <- iOpen path WriteMode
-    iPutStr hdl str
-    iClose hdl
+iWriteFile path str = ioReport $ do
+    hdl <- openFile path WriteMode
+    hPutStr hdl str
+    hClose hdl
 
 -----
 
 iReadFile :: (MonadError String m, MonadIO m) => String -> m String
-iReadFile path = do
-    hdl <- iOpen path ReadMode
-    str <- ibGetContents hdl
+iReadFile path = ioReport $ do
+    hdl <- openFile path ReadMode
+    str <- BS.hGetContents hdl
     return $ BS.unpack str

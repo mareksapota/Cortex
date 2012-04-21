@@ -11,7 +11,7 @@ import Network
 import System.IO
     ( stderr
     , Handle
-    , BufferMode (LineBuffering)
+    , BufferMode (BlockBuffering)
     , IOMode (ReadMode, WriteMode, AppendMode)
     )
 import System.Cmd (rawSystem)
@@ -70,7 +70,7 @@ handleConnection = catchError handleConnection' reportError
 handleConnection' :: ConnectedMonadStack ()
 handleConnection' = do
     (hdl, _, _) <- get
-    iSetBuffering hdl LineBuffering
+    iSetBuffering hdl (BlockBuffering $ Just 32)
     getLine >>= chooseConnectionMode
 
 -----
@@ -335,19 +335,23 @@ closeConnection = do
 -----
 
 printLog :: String -> ConnectedMonadStack ()
-printLog msg = do
-    timeString <- currentTime
-    host <- getHost
-    iPutStrLn stderr $ concat [timeString, " -- ", host, " -- ", msg]
-    iFlush stderr
+printLog msg
+    | Config.writeLog = do
+        timeString <- currentTime
+        host <- getHost
+        iPutStrLn stderr $ concat [timeString, " -- ", host, " -- ", msg]
+        iFlush stderr
+    | otherwise = return ()
 
 -----
 
 printLocalLog :: String -> GrandMonadStack ()
-printLocalLog msg = do
-    timeString <- currentTime
-    iPutStrLn stderr $ timeString ++ " -- " ++ msg
-    iFlush stderr
+printLocalLog msg
+    | Config.writeLog = do
+        timeString <- currentTime
+        iPutStrLn stderr $ timeString ++ " -- " ++ msg
+        iFlush stderr
+    | otherwise = return ()
 
 -----
 

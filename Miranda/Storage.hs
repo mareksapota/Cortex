@@ -130,7 +130,7 @@ show = do
 
 read :: ByteString -> GrandMonadStack ()
 read s = do
+    vs <- iDecode s
     -- Remove the old MVar value.
     getVS
-    vs <- iDecode s
     putVS vs

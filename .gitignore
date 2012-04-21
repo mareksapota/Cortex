@@ -5,6 +5,7 @@ Miranda/miranda
 Miranda/test/Commit_Test
 Miranda/test/CommitList_Test
 Miranda/test/ValueTree_Test
+Miranda/test/performance/check
 Saffron/saffron
 G23/g23
 Ariel/ariel
