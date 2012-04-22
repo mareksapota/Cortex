@@ -10,6 +10,7 @@ module Cortex.Miranda.ValueTree
     , insert
     , delete
     , apply
+    , toList
     ) where
 
 -----
@@ -118,6 +119,16 @@ getAll' k f (Node m Nothing) = do
         (\(k', vt') -> getAll' (if null k then k' else k ++ "::" ++ k') f vt')
         (Map.toList m)
     return $ concat l
+
+-----
+-- Get all commits from the tree.
+
+toList :: ValueTree -> [Commit]
+toList (Node m v) = do
+    let l = map toList (snd $ unzip $ Map.toList m)
+    if isNothing v
+        then concat l
+        else concat $ [(fromJust v)]:l
 
 -----
 

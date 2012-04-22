@@ -18,17 +18,16 @@ import System.Cmd (rawSystem)
 import Control.Monad.State
 import Control.Monad.Error
 import Control.Concurrent.Lifted
-import Data.Time.Format (formatTime)
-import Data.Time.Clock (getCurrentTime)
-import System.Locale (defaultTimeLocale)
 import Data.Maybe (fromMaybe, fromJust, isNothing)
 import Data.ByteString.Lazy.Char8 (ByteString)
 import qualified Data.ByteString.Lazy.Char8 as BS
+import System.Random (randomIO)
 
 import Cortex.Common.ErrorIO
 import Cortex.Common.Event
 import Cortex.Common.Error
 import Cortex.Common.MaybeRead
+import Cortex.Common.Time
 import Cortex.Miranda.Commit (Commit)
 import qualified Cortex.Miranda.Commit as C
 import qualified Cortex.Miranda.Storage as S
@@ -131,7 +130,7 @@ chooseConnectionMode "delete" = do
     closeConnection
 
 chooseConnectionMode "sync" = do
-    printLog "sync request"
+    printLog "Sync request"
     host <- getLine
     -- If remote host was assumed offline, client side synchronisation will not
     -- mark it online.
@@ -141,11 +140,32 @@ chooseConnectionMode "sync" = do
     when (boff == fromMaybe boff remote) $ do
         lift $ S.set key (BS.pack "online")
         printLog $ concat ["Marked ", host, " online"]
+    -- If the remote performed a squash more recently, do it too.
+    remoteSTime <- getLine
+    localSTime <- lift S.getSquashTime
+    when (localSTime < remoteSTime) $ lift $ do
+        { printLocalLog "Local squash out of sync"
+        ; performSquash
+        ; S.setSquashTime remoteSTime
+        }
     rest <- getRest
-    clientSync (BS.lines rest) 0
-    printLog "sync request done"
+    -- If local squash is more recent, silently abandon the sync.
+    if (localSTime > remoteSTime)
+        then do
+            { printLog "Remote squash out of sync, abandoning"
+            ; phonyClientSync (BS.lines rest)
+            }
+        else clientSync (BS.lines rest) 0
+    printLog "Sync request done"
 
 chooseConnectionMode _ = throwError "Unknown connection mode"
+
+-----
+
+-- Pretend we are up to date.
+phonyClientSync :: [ByteString] -> ConnectedMonadStack ()
+phonyClientSync [] = throwError "Expected more lines"
+phonyClientSync (_:_) = putLine "yes"
 
 -- Answer questions about present commits.
 clientSync :: [ByteString] -> Int -> ConnectedMonadStack ()
@@ -186,6 +206,14 @@ sync port = do
     let hosts = fst $ unzip hosts'
     r <- Random.generate (0, (length hosts) - 1) Config.syncServers
     let syncHosts = map (\i -> hosts !! i) r
+    -- Decide if we should squash some commits first.
+    when (Config.squashTime > 0.0) $ do
+        let probability = Config.syncTime / Config.squashTime
+        -- Roll the dice, random value between 0.0 and 1.0.
+        (x :: Double) <- liftIO randomIO
+        when (x < probability) $ do
+            performSquash
+            S.updateSquashTime
     forM_ syncHosts (performSync selfHost)
 
 performSync :: String -> String -> GrandMonadStack ()
@@ -214,6 +242,10 @@ performSync' :: String -> ConnectedMonadStack ()
 performSync' selfHost = do
     putLine "sync"
     putLine selfHost
+    -- Send local squash time.
+    localSTime <- lift S.getSquashTime
+    putLine localSTime
+    -- Transmit commits to the remote.
     commits <- lift S.getCommits
     toTransmit <- performSync'' commits []
     performSync''' toTransmit
@@ -282,6 +314,13 @@ saveValueStorage = do
 
 -----
 
+performSquash :: GrandMonadStack ()
+performSquash = do
+    printLocalLog $ "Commit squash initiated"
+    S.squash
+
+-----
+
 getLine :: ConnectedMonadStack String
 getLine = do
     (hdl, _, _) <- get
@@ -337,7 +376,7 @@ closeConnection = do
 printLog :: String -> ConnectedMonadStack ()
 printLog msg
     | Config.writeLog = do
-        timeString <- currentTime
+        timeString <- getDefaultTimestamp
         host <- getHost
         iPutStrLn stderr $ concat [timeString, " -- ", host, " -- ", msg]
         iFlush stderr
@@ -348,14 +387,9 @@ printLog msg
 printLocalLog :: String -> GrandMonadStack ()
 printLocalLog msg
     | Config.writeLog = do
-        timeString <- currentTime
-        iPutStrLn stderr $ timeString ++ " -- " ++ msg
+        timeString <- getDefaultTimestamp
+        iPutStrLn stderr $ concat [timeString, " -- ", msg]
         iFlush stderr
     | otherwise = return ()
 
 -----
-
-currentTime :: (MonadIO m) => m String
-currentTime = do
-    t <- liftIO getCurrentTime
-    return $ formatTime defaultTimeLocale "%m/%d/%Y %H:%M:%S:%q" t

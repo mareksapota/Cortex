@@ -15,6 +15,8 @@ import Cortex.Miranda.ValueStorage (ValueStorage)
 
 type LesserMonadStack = ErrorT String IO
 
--- First state holds storage location.
-type GrandMonadStack = StateT String (StateT (MVar ValueStorage) LesserMonadStack)
+-- First state holds storage location.  Second one holds the timestamp of last
+-- squash operation (time of an initiated operation, not a mirrored squash) and
+-- the value storage.
+type GrandMonadStack = StateT String (StateT (MVar String, MVar ValueStorage) LesserMonadStack)
 

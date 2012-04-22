@@ -7,20 +7,20 @@ module Cortex.Miranda.CommitRaw where
 
 -----
 
-import Control.Monad.Trans (MonadIO, liftIO)
+import Control.Monad.Trans (MonadIO)
 import Control.Monad.Error (MonadError, throwError)
 import Control.Monad.State (MonadState, get)
 import System.IO (IOMode (ReadMode, WriteMode, AppendMode), Handle)
-import Data.Time.Format (formatTime)
-import Data.Time.Clock (getCurrentTime)
-import System.Locale (defaultTimeLocale)
 import Data.ByteString.Lazy.Char8 (ByteString)
+import qualified Data.ByteString.Lazy.Char8 as BS
 import Data.Binary (Binary)
 import qualified Data.Binary as B
 import Data.Maybe (isNothing, fromJust)
+import OpenSSL.EVP.Base64 (encodeBase64LBS, decodeBase64LBS)
 
 import qualified Cortex.Common.Sha1 as Sha1
 import Cortex.Common.ErrorIO
+import Cortex.Common.Time
 
 -----
 
@@ -75,14 +75,6 @@ instance Binary Commit where
         return $ Commit key op hash ts
 
 -----
--- Generate current timestamp.
-
-time :: (MonadIO m) => m String
-time = do
-    t <- liftIO getCurrentTime
-    return $ formatTime defaultTimeLocale "%Y.%m.%d %H:%M:%S:%q" t
-
------
 -- Open commit storage.
 
 open :: (MonadIO m, MonadState String m, MonadError String m) =>
@@ -105,7 +97,7 @@ set :: (MonadIO m, MonadState String m, MonadError String m) =>
     String -> ByteString -> m Commit
 set key value = do
     let hash = Sha1.bhash value
-    ts <- time
+    ts <- getBigEndianTimestamp
     let commit = Commit key (Set hash) "" ts
     hdl <- open commit WriteMode
     ibPutStr hdl value
@@ -121,7 +113,7 @@ set key value = do
 
 delete :: (MonadIO m) => String -> m Commit
 delete key = do
-    ts <- time
+    ts <- getBigEndianTimestamp
     return $ Commit key Delete "" ts
 
 -----
@@ -188,13 +180,19 @@ isSet commit = not $ isDelete commit
 
 toString :: (MonadIO m, MonadState String m, MonadError String m) =>
     Commit -> m ByteString
+toString c = do
+    t <- toString' c
+    e <- iEncode t
+    return $ encodeBase64LBS e
 
-toString (Commit key Delete hash ts) =
-    iEncode $ (key, "delete", "", "", hash, ts)
+toString' :: (MonadIO m, MonadState String m, MonadError String m) =>
+    Commit -> m (Key, String, ByteString, Hash, Hash, Timestamp)
+toString' (Commit key Delete hash ts) =
+    return (key, "delete", BS.empty, "", hash, ts)
 
-toString (Commit key (Set valueHash) hash ts) = do
+toString' (Commit key (Set valueHash) hash ts) = do
     value <- getValue (Commit key (Set valueHash) hash ts)
-    iEncode $ (key, "set", value, valueHash, hash, ts)
+    return (key, "set", value, valueHash, hash, ts)
 
 -----
 
@@ -202,7 +200,8 @@ fromString :: (MonadIO m, MonadState String m, MonadError String m) =>
     ByteString -> m Commit
 
 fromString s = do
-    (tuple :: (Key, String, ByteString, Hash, Hash, Timestamp)) <- iDecode s
+    let d = decodeBase64LBS s
+    (tuple :: (Key, String, ByteString, Hash, Hash, Timestamp)) <- iDecode d
     fromString' tuple
 
 fromString' :: (MonadIO m, MonadState String m, MonadError String m) =>

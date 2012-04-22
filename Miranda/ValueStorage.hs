@@ -12,6 +12,7 @@ module Cortex.Miranda.ValueStorage
     , insert
     , member
     , getCommits
+    , squash
     ) where
 
 -----
@@ -105,3 +106,13 @@ member hash (ValueStorage _ cl) = CL.member hash cl
 
 getCommits :: ValueStorage -> [Commit]
 getCommits (ValueStorage _ cl) = CL.toList cl
+
+-----
+
+squash :: ValueStorage -> ValueStorage
+squash (ValueStorage vt _) = do
+    let l = VT.toList vt
+    let cl = foldl (\x c -> fst (CL.insert c x)) CL.empty l
+    ValueStorage vt cl
+
+-----
