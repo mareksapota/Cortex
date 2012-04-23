@@ -11,6 +11,7 @@ toWatch :: [String]
 toWatch =
     [ "Miranda"
     , "Miranda/test"
+    , "Miranda/test/performance"
     , "Saffron"
     , "Saffron/Apps"
     , "G23"
@@ -25,20 +26,22 @@ wait t = threadDelay $ round $ (10 ** 6) * t
 main :: IO ()
 main = do
     n <- initINotify
-    modified <- newEmptySampleVar
+    modified <- newEmptyMVar
     main' n modified
 
-main' :: INotify -> SampleVar () -> IO ()
+main' :: INotify -> MVar () -> IO ()
 main' n modified = do
     forM_ toWatch (\p -> addWatch n [Modify, Move, Create, Delete] p handle)
     forever $ do
+        takeMVar modified
+        -- Avoid being triggered two times by one operation like writing several
+        -- files at once, Vim writing to a temporary file and then replacing the
+        -- target file, etc.
         wait 0.5
-        e <- isEmptySampleVar modified
-        when (not e) $ do
-            readSampleVar modified
-            printLog "Auto build triggered"
-            rawSystem "./build" ["--fast"]
-            printLog "Auto build done"
+        tryTakeMVar modified
+        printLog "Auto build triggered"
+        rawSystem "./build" ["--fast"]
+        printLog "Auto build done"
     where
         handle :: Event -> IO ()
         handle e
@@ -55,8 +58,9 @@ main' n modified = do
 
         handle'' :: String -> IO ()
         handle'' f
-            | ".hs" == (reverse $ take 3 $ reverse f) =
-                writeSampleVar modified ()
+            | ".hs" == (reverse $ take 3 $ reverse f) = do
+                tryPutMVar modified ()
+                return ()
             | otherwise = return ()
 
 printLog :: String -> IO ()

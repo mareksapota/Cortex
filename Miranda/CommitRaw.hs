@@ -222,3 +222,5 @@ fromString' (key, "set", value, valueHash, hash, ts) = do
     return commit
 
 fromString' _ = throwError "Couldn't parse the commit string"
+
+-----

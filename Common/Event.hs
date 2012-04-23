@@ -75,7 +75,7 @@ stopTimer hdl = do
 
 eventLoop :: (MonadBase IO m) => m ()
 eventLoop = do
-    -- Sleep for 1m.
+    -- Sleep for 1m in a loop.
     let sleepTime = round $ ((10 ** 6) * 60.0 :: Double)
     forever $ threadDelay sleepTime
 

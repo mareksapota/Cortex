@@ -70,13 +70,15 @@ remove :: String -> GrandMonadStack ()
 remove i = do
     { let key = "app::instance::" ++ i
     ; (host, port) <- get
+    -- Do a lookup first, we don't want to notify the user if the instance is
+    -- already dead, for example killed by another G23 thread.
     ; hdl <- iConnectTo host port
     ; iPutStrLn hdl "lookup"
     ; iPutStrLn hdl key
     ; iFlush hdl
     ; response <- iGetLine hdl
     ; iClose hdl
-    -- Remove and notify about it only once.
+    -- Don't issue a delete if we don't have to.
     ; when (response /= "Nothing") $ remove' key
     }
 

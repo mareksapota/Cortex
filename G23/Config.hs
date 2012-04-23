@@ -4,4 +4,4 @@ aliveCheckTime :: Double
 aliveCheckTime = 1.0
 
 connectionSleep :: Double
-connectionSleep = 5.0
+connectionSleep = 10.0

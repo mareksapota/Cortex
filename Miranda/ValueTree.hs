@@ -115,8 +115,9 @@ getAll' k f (Node m (Just c)) = do
         then return $ (k, v):rest
         else return rest
 getAll' k f (Node m Nothing) = do
+    let extend key = if null k then key else k ++ "::" ++ key
     l <- mapM
-        (\(k', vt') -> getAll' (if null k then k' else k ++ "::" ++ k') f vt')
+        (\(k', vt') -> getAll' (extend k') f vt')
         (Map.toList m)
     return $ concat l
 
@@ -137,33 +138,27 @@ insert key commit vt = insert' (split key) commit vt
 
 insert' :: [String] -> Commit -> ValueTree -> ValueTree
 insert' [] commit (Node m _) = Node m (Just commit)
-insert' (k:key) commit (Node m v)
-    | Map.member k m = Node (Map.insert k (insert' key commit (m Map.! k)) m) v
-    | otherwise = Node (Map.insert k (insert' key commit empty) m) v
+insert' (k:key) commit (Node m v) = Node (Map.alter f k m) v
+    where
+        f Nothing = Just $ insert' key commit empty
+        f (Just n) = Just $ insert' key commit n
 
 -----
 
 delete :: String -> ValueTree -> ValueTree
-delete key vt = delete' (split key) vt
+delete key vt = maybe empty id (delete' (split key) vt)
 
-delete' :: [String] -> ValueTree -> ValueTree
-delete' key vt = handle $ delete'' key vt
-    where
-        handle (Just n) = n
-        handle Nothing = empty
-
-delete'' :: [String] -> ValueTree -> Maybe ValueTree
-delete'' [] (Node m _)
-    -- No children, delete node.
+delete' :: [String] -> ValueTree -> Maybe ValueTree
+delete' [] (Node m _)
     | Map.null m = Nothing
-    -- Node has children, just remove the value.
     | otherwise = Just $ Node m Nothing
-delete'' (k:key) (Node m v) = checkMap $ Map.update (delete'' key) k m
-    where
-        checkMap :: Map String ValueTree -> Maybe ValueTree
-        checkMap u
-            | Map.null u && v == Nothing = Nothing
-            | otherwise = Just $ Node u v
+delete' (k:key) (Node m v)
+    | Map.member k m = do
+        let m' = Map.update (delete' key) k m
+        if Map.null m' && isNothing v
+            then Nothing
+            else Just $ Node m' v
+    | otherwise = Just $ Node m v
 
 -----
 
@@ -177,9 +172,11 @@ apply commit vt
 -- Split key at '::' and return list of key parts.
 split :: String -> [String]
 split "" = []
-split (k:key) = split' k key ""
+split key = do
+    let (h, t) = foldl f ([], []) key
+    reverse ((reverse h):t)
+    where
+        f (':':h, t) ':' = ([], (reverse h):t)
+        f (h, t) c = (c:h, t)
 
-split' :: Char -> String -> String -> [String]
-split' a [] c = [reverse (a:c)]
-split' ':' (':':key) c = (reverse c):(split key)
-split' a (b:key) c = split' b key (a:c)
+-----

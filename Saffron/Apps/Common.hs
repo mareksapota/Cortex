@@ -1,6 +1,5 @@
 module Cortex.Saffron.Apps.Common
-    ( prepare
-    , run
+    ( run
     ) where
 
 -----
@@ -19,22 +18,17 @@ import Data.Maybe (isNothing)
 import Cortex.Saffron.GrandMonadStack
 import qualified Cortex.Saffron.Config as Config
 import Cortex.Common.ErrorIO
-import Cortex.Common.Error
 
 -----
 
-prepare :: AppManagerMonadStack () -> AppManagerMonadStack ()
-prepare f = ignoreError f
-
------
-
-run :: Int -> String -> [String] -> AppManagerMonadStack (MVar (), MVar Int)
-run port cmd args = do
+run :: Int -> String -> [String] -> Maybe String -> Maybe [(String, String)] ->
+    AppManagerMonadStack (MVar (), MVar Int)
+run port cmd args location env = do
     (_, _, app, _) <- get
     stop <- newEmptyMVar
     finished <- newEmptyMVar
     fork $ do
-        { proc <- iRunProcess cmd args
+        { proc <- iRunProcess cmd args location env
 
         ; fork $ do
             { takeMVar stop

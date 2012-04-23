@@ -36,9 +36,8 @@ import Cortex.Common.Time
 -----
 -- WARNING
 --
--- Each `getVS` call has to be followed by a `putVS` call.  If you want to use
--- `putVS` you have to use `getVS` instead of `readVS`, otherwise Miranda will
--- hang.
+-- Each `getVS` call has to be followed by a `putVS` call.  Make sure you use
+-- `putVS` even in case on an error, for example by using `putBack`.
 -----
 
 -----

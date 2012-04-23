@@ -133,7 +133,7 @@ if args.fast:
 else:
     flags.extend([
         '-O2',
-        '-fllvm',
+        '-fllvm'
     ])
 #####
 

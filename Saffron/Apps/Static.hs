@@ -29,6 +29,6 @@ run port location = do
     Common.run port "nginx"
         [ "-c"
         , location ++ "/nginx.conf." ++ (show port)
-        ]
+        ] Nothing Nothing
 
 -----

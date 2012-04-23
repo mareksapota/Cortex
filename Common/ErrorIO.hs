@@ -54,12 +54,12 @@ ioReport f = do
 
 iSetBuffering :: (MonadError String m, MonadIO m) =>
     Handle -> BufferMode -> m ()
-iSetBuffering a b = ioReport $ hSetBuffering a b
+iSetBuffering hdl mode = ioReport $ hSetBuffering hdl mode
 
 -----
 
 iGetLine :: (MonadError String m, MonadIO m) => Handle -> m String
-iGetLine a = ioReport $ iGetLine' a []
+iGetLine hdl = ioReport $ iGetLine' hdl []
 
 iGetLine' :: Handle -> String -> IO String
 iGetLine' hdl s = do
@@ -71,23 +71,23 @@ iGetLine' hdl s = do
 -----
 
 iGetChar :: (MonadError String m, MonadIO m) => Handle -> m Char
-iGetChar a = ioReport $ hGetChar a
+iGetChar hdl = ioReport $ hGetChar hdl
 
 -----
 
 ibGetContents :: (MonadError String m, MonadIO m) => Handle -> m ByteString
-ibGetContents a = ioReport $ BS.hGetContents a
+ibGetContents hdl = ioReport $ BS.hGetContents hdl
 
 -----
 
 iOpen :: (MonadError String m, MonadIO m) => FilePath -> IOMode -> m Handle
-iOpen a b = ioReport $ openFile a b
+iOpen path mode = ioReport $ openFile path mode
 
 -----
 
 iPersistentOpen :: (MonadError String m, MonadIO m) => FilePath -> IOMode -> m Handle
-iPersistentOpen a b = do
-    t <- liftIO $ try $ openFile a b
+iPersistentOpen path mode = do
+    t <- liftIO $ try $ openFile path mode
     handle t
     where
         handle (Right v) = return v
@@ -96,53 +96,53 @@ iPersistentOpen a b = do
                 -- Use active waiting only if no other threads are available to
                 -- run.
                 liftIO yield
-                iPersistentOpen a b
+                iPersistentOpen path mode
             | otherwise = throwError $ show e
 
 -----
 
 iClose :: (MonadError String m, MonadIO m) => Handle -> m ()
-iClose a = ioReport $ hClose a
+iClose hdl = ioReport $ hClose hdl
 
 -----
 
 iFlush :: (MonadError String m, MonadIO m) => Handle -> m ()
-iFlush a = ioReport $ hFlush a
+iFlush hdl = ioReport $ hFlush hdl
 
 -----
 
 iPutStrLn :: (MonadError String m, MonadIO m) => Handle -> String -> m ()
-iPutStrLn a b = ioReport $ do
-    hPutStr a b
-    hPutChar a '\n'
+iPutStrLn hdl s = ioReport $ do
+    hPutStr hdl s
+    hPutChar hdl '\n'
 
 -----
 
 ibPutStrLn :: (MonadError String m, MonadIO m) => Handle -> ByteString -> m ()
-ibPutStrLn a b = ioReport $ do
-    BS.hPut a b
-    BS.hPut a $ BS.pack "\n"
+ibPutStrLn hdl s = ioReport $ do
+    BS.hPut hdl s
+    BS.hPut hdl $ BS.pack "\n"
 
 -----
 
 iPutStr :: (MonadError String m, MonadIO m) => Handle -> String -> m ()
-iPutStr a b = ioReport $ hPutStr a b
+iPutStr hdl s = ioReport $ hPutStr hdl s
 
 -----
 
 ibPutStr :: (MonadError String m, MonadIO m) => Handle -> ByteString -> m ()
-ibPutStr a b = ioReport $ BS.hPut a b
+ibPutStr hdl s = ioReport $ BS.hPut hdl s
 
 -----
 
-iListenOn :: (MonadError String m, MonadIO m) => PortID -> m Socket
-iListenOn a = ioReport $ listenOn a
+iListenOn :: (MonadError String m, MonadIO m) => Int -> m Socket
+iListenOn port = ioReport $ listenOn $ PortNumber $ fromIntegral port
 
 -----
 
 iAccept :: (MonadError String m, MonadIO m) =>
     Socket -> m (Handle, HostName, PortNumber)
-iAccept a = ioReport $ accept a
+iAccept sock = ioReport $ accept sock
 
 -----
 
@@ -168,8 +168,8 @@ iDecode a = do
 -----
 
 iRawSystem :: (MonadError String m, MonadIO m) => String -> [String] -> m ()
-iRawSystem a b = do
-    e <- liftIO $ rawSystem a b
+iRawSystem cmd args = do
+    e <- liftIO $ rawSystem cmd args
     iRawSystem' e
 
 iRawSystem' :: (MonadError String m, MonadIO m) => ExitCode -> m ()
@@ -180,20 +180,22 @@ iRawSystem' (ExitFailure a) = throwError $ "ExitFailure " ++ (show a)
 
 iReadProcess :: (MonadError String m, MonadIO m) =>
     String -> [String] -> m String
-iReadProcess a b = ioReport $ readProcess a b ""
+iReadProcess cmd args = ioReport $ readProcess cmd args ""
 
 -----
 
 iRunProcess :: (MonadError String m, MonadIO m) => String -> [String] ->
-    m ProcessHandle
-iRunProcess cmd args = ioReport $ runProcess cmd args Nothing Nothing
-    Nothing Nothing Nothing
+    Maybe String -> Maybe [(String, String)] -> m ProcessHandle
+iRunProcess cmd args location env = ioReport $ do
+    input <- openFile "/dev/null" ReadMode
+    output <- openFile "/dev/null" WriteMode
+    runProcess cmd args location env (Just input) (Just output) Nothing
 
 -----
 
 iOpenTempFile :: (MonadError String m, MonadIO m) => String -> String ->
     m (String, Handle)
-iOpenTempFile a b = ioReport $ openTempFile a b
+iOpenTempFile dir name = ioReport $ openTempFile dir name
 
 -----
 
@@ -210,3 +212,5 @@ iReadFile path = ioReport $ do
     hdl <- openFile path ReadMode
     str <- BS.hGetContents hdl
     return $ BS.unpack str
+
+-----

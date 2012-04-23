@@ -24,6 +24,7 @@ import Control.Monad.State (MonadState)
 import Data.ByteString.Lazy.Char8 (ByteString)
 import Data.Binary (Binary)
 import qualified Data.Binary as B
+import Control.Parallel (par, pseq)
 
 import Cortex.Miranda.ValueTree (ValueTree)
 import qualified Cortex.Miranda.ValueTree as VT
@@ -58,7 +59,7 @@ set key value (ValueStorage vt cl) = do
     c <- Commit.set key value
     let vt' = VT.insert key c vt
     let cl' = fst $ CL.insert c cl
-    return $ ValueStorage vt' cl'
+    vt' `par` cl' `pseq` return $ ValueStorage vt' cl'
 
 -----
 
@@ -67,7 +68,7 @@ delete key (ValueStorage vt cl) = do
     c <- Commit.delete key
     let vt' = VT.delete key vt
     let cl' = fst $ CL.insert c cl
-    return $ ValueStorage vt' cl'
+    vt' `par` cl' `pseq` return $ ValueStorage vt' cl'
 
 -----
 

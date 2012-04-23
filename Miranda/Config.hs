@@ -14,7 +14,8 @@ syncServers = 2
 -- How often should this node initiate a commit squash?  This value should be
 -- either reverse proportional to the number of participating Miranda instances
 -- or should be set to `0.0` on slave instances (only master instances will be
--- able to initiate a squash then).
+-- able to initiate a squash then).  This time is not strictly enforced, but the
+-- average time between squashes should have a limes in this value.
 squashTime :: Double
 squashTime = 60.0
 

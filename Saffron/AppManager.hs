@@ -29,6 +29,7 @@ import Cortex.Common.MaybeRead
 import qualified Cortex.Saffron.Config as Config
 
 import qualified Cortex.Saffron.Apps.Static as AppStatic
+import qualified Cortex.Saffron.Apps.Rails as AppRails
 
 -----
 
@@ -39,6 +40,7 @@ knownAppTypes :: Map String
 
 knownAppTypes = Map.fromList
     [ ("static", (AppStatic.prepare, AppStatic.run))
+    , ("rails", (AppRails.prepare, AppRails.run))
     ]
 
 -----

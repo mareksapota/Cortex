@@ -46,7 +46,7 @@ runServer :: Int -> GrandMonadStack ()
 runServer serverPort = do
     readValueStorage
     periodicTimer Config.storageTime saveValueStorage
-    socket <- iListenOn $ PortNumber $ fromIntegral serverPort
+    socket <- iListenOn serverPort
     printLocalLog $ "Server started on port " ++ (show serverPort)
     -- Start sync daemon.
     periodicTimer Config.syncTime (sync serverPort)
