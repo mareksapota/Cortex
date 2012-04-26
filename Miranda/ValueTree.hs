@@ -35,19 +35,19 @@ type SIM m a = (MonadIO m, MonadError String m, MonadState String m) => m a
 
 -----
 
-data ValueTree = Node (Map String ValueTree) (Maybe Commit)
+newtype ValueTree = Node (Map String ValueTree, Maybe Commit)
     deriving (Eq)
 
 instance Binary ValueTree where
-    put (Node m c) = B.put (m, c)
+    put (Node (m, c)) = B.put (m, c)
     get = do
         (m, c) <- B.get
-        return $ Node m c
+        return $ Node (m, c)
 
 -----
 
 empty :: ValueTree
-empty = Node Map.empty Nothing
+empty = Node (Map.empty, Nothing)
 
 -----
 -- Get value corresponding to given key.
@@ -56,12 +56,12 @@ lookup :: String -> ValueTree -> SIM m (Maybe ByteString)
 lookup key t = lookup' (split key) t
 
 lookup' :: [String] -> ValueTree -> SIM m (Maybe ByteString)
-lookup' [] (Node _ c)
+lookup' [] (Node (_, c))
     | isNothing c = return Nothing
     | otherwise = do
         v <- Commit.getValue $ fromJust c
         return $ Just v
-lookup' (k:key) (Node m _)
+lookup' (k:key) (Node (m, _))
     | Map.member k m = lookup' key (m Map.! k)
     | otherwise = return Nothing
 
@@ -72,12 +72,12 @@ lookupHash :: String -> ValueTree -> SIM m (Maybe String)
 lookupHash key t = lookupHash' (split key) t
 
 lookupHash' :: [String] -> ValueTree -> SIM m (Maybe String)
-lookupHash' [] (Node _ c)
+lookupHash' [] (Node (_, c))
     | isNothing c = return Nothing
     | otherwise = do
         h <- Commit.getValueHash $ fromJust c
         return $ Just h
-lookupHash' (k:key) (Node m _)
+lookupHash' (k:key) (Node (m, _))
     | Map.member k m = lookupHash' key (m Map.! k)
     | otherwise = return Nothing
 
@@ -98,7 +98,7 @@ lookupAllWhere key f vt = lookupAllWhere' (split key) f vt
 lookupAllWhere' :: [String] -> (String -> ByteString -> Bool) -> ValueTree ->
     SIM m [(String, ByteString)]
 lookupAllWhere' [] f vt = getAll f vt
-lookupAllWhere' (k:key) f (Node m _)
+lookupAllWhere' (k:key) f (Node (m, _))
     | Map.member k m = lookupAllWhere' key f (m Map.! k)
     | otherwise = return []
 
@@ -108,13 +108,13 @@ getAll f v = getAll' "" f v
 
 getAll' :: String -> (String -> ByteString -> Bool) -> ValueTree ->
     SIM m [(String, ByteString)]
-getAll' k f (Node m (Just c)) = do
-    rest <- getAll' k f (Node m Nothing)
+getAll' k f (Node (m, Just c)) = do
+    rest <- getAll' k f (Node (m, Nothing))
     v <- Commit.getValue c
     if f k v
         then return $ (k, v):rest
         else return rest
-getAll' k f (Node m Nothing) = do
+getAll' k f (Node (m, Nothing)) = do
     let extend key = if null k then key else k ++ "::" ++ key
     l <- mapM
         (\(k', vt') -> getAll' (extend k') f vt')
@@ -125,7 +125,7 @@ getAll' k f (Node m Nothing) = do
 -- Get all commits from the tree.
 
 toList :: ValueTree -> [Commit]
-toList (Node m v) = do
+toList (Node (m, v)) = do
     let l = map toList (snd $ unzip $ Map.toList m)
     if isNothing v
         then concat l
@@ -137,8 +137,8 @@ insert :: String -> Commit -> ValueTree -> ValueTree
 insert key commit vt = insert' (split key) commit vt
 
 insert' :: [String] -> Commit -> ValueTree -> ValueTree
-insert' [] commit (Node m _) = Node m (Just commit)
-insert' (k:key) commit (Node m v) = Node (Map.alter f k m) v
+insert' [] commit (Node (m, _)) = Node (m, Just commit)
+insert' (k:key) commit (Node (m, v)) = Node (Map.alter f k m, v)
     where
         f Nothing = Just $ insert' key commit empty
         f (Just n) = Just $ insert' key commit n
@@ -149,16 +149,16 @@ delete :: String -> ValueTree -> ValueTree
 delete key vt = maybe empty id (delete' (split key) vt)
 
 delete' :: [String] -> ValueTree -> Maybe ValueTree
-delete' [] (Node m _)
+delete' [] (Node (m, _))
     | Map.null m = Nothing
-    | otherwise = Just $ Node m Nothing
-delete' (k:key) (Node m v)
+    | otherwise = Just $ Node (m, Nothing)
+delete' (k:key) (Node (m, v))
     | Map.member k m = do
         let m' = Map.update (delete' key) k m
         if Map.null m' && isNothing v
             then Nothing
-            else Just $ Node m' v
-    | otherwise = Just $ Node m v
+            else Just $ Node (m', v)
+    | otherwise = Just $ Node (m, v)
 
 -----
 

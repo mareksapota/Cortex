@@ -33,10 +33,10 @@ data Operation =
     | Delete
     deriving (Eq, Show)
 
-data Commit = Commit Key Operation Hash Timestamp
+newtype Commit = Commit (Key, Operation, Hash, Timestamp)
 
 instance Eq Commit where
-    (Commit k1 op1 _ t1) == (Commit k2 op2 _ t2) =
+    (Commit (k1, op1, _, t1)) == (Commit (k2, op2, _, t2)) =
         k1 == k2 && op1 == op2 && t1 == t2
 
 instance Ord Operation where
@@ -46,7 +46,7 @@ instance Ord Operation where
     compare (Set a) (Set b) = compare a b
 
 instance Ord Commit where
-    compare (Commit k1 op1 _ t1) (Commit k2 op2 _ t2) =
+    compare (Commit (k1, op1, _, t1)) (Commit (k2, op2, _, t2)) =
         tryOp $ tryKey $ tryTimestamp
             where
                 tryTimestamp = compare t1 t2
@@ -69,17 +69,17 @@ instance Binary Operation where
             else return $ Set $ fromJust op
 
 instance Binary Commit where
-    put (Commit key op hash ts) = B.put (key, op, hash, ts)
+    put (Commit (key, op, hash, ts)) = B.put (key, op, hash, ts)
     get = do
         (key, op, hash, ts) <- B.get
-        return $ Commit key op hash ts
+        return $ Commit (key, op, hash, ts)
 
 -----
 -- Open commit storage.
 
 open :: (MonadIO m, MonadState String m, MonadError String m) =>
     Commit -> IOMode -> m Handle
-open (Commit key (Set hash) _ ts) mode = do
+open (Commit (key, Set hash, _, ts)) mode = do
     storage <- get
     -- Uses the same things as equality testing, the same location can be only
     -- used by identical commits.
@@ -88,7 +88,7 @@ open (Commit key (Set hash) _ ts) mode = do
     -- opening it will result in a file already locked error.  To counter that,
     -- this will wait until the lock is lifted.
     iPersistentOpen location mode
-open (Commit _ Delete _ _) _ = throwError "Can't open delete commits"
+open (Commit (_, Delete, _, _)) _ = throwError "Can't open delete commits"
 
 -----
 -- Create a new set type commit.
@@ -98,7 +98,7 @@ set :: (MonadIO m, MonadState String m, MonadError String m) =>
 set key value = do
     let hash = Sha1.bhash value
     ts <- getBigEndianTimestamp
-    let commit = Commit key (Set hash) "" ts
+    let commit = Commit (key, Set hash, "", ts)
     hdl <- open commit WriteMode
     ibPutStr hdl value
     iClose hdl
@@ -114,7 +114,7 @@ set key value = do
 delete :: (MonadIO m) => String -> m Commit
 delete key = do
     ts <- getBigEndianTimestamp
-    return $ Commit key Delete "" ts
+    return $ Commit (key, Delete, "", ts)
 
 -----
 -- Read commit value from storage.
@@ -130,19 +130,19 @@ getValue commit = do
 -- Get Sha1 hash of commit's value.
 
 getValueHash :: (MonadError String m ) => Commit -> m Hash
-getValueHash (Commit _ Delete _ _) =
+getValueHash (Commit (_, Delete, _, _)) =
     throwError "Delete commits don't have values"
-getValueHash (Commit _ (Set hash) _ _) = return hash
+getValueHash (Commit (_, Set hash, _, _)) = return hash
 
 -----
 -- Rebase a commit to a new parent commit.
 
 rebase :: Maybe Commit -> Commit -> Commit
 rebase Nothing c = rebase' "" c
-rebase (Just (Commit _ _ parentHash _)) c = rebase' parentHash c
+rebase (Just (Commit (_, _, parentHash, _))) c = rebase' parentHash c
 
 rebase' :: Hash -> Commit -> Commit
-rebase' parentHash (Commit key op _ ts) = Commit key op newHash ts
+rebase' parentHash (Commit (key, op, _, ts)) = Commit (key, op, newHash, ts)
     where
         newHash :: Hash
         newHash = Sha1.hash $ concat
@@ -158,23 +158,23 @@ rebase' parentHash (Commit key op _ ts) = Commit key op newHash ts
 -----
 
 getKey :: Commit -> String
-getKey (Commit key _ _ _) = key
+getKey (Commit (key, _, _, _)) = key
 
 -----
 
 getHash :: Commit -> Hash
-getHash (Commit _ _ hash _) = hash
+getHash (Commit (_, _, hash, _)) = hash
 
 -----
 
 isDelete :: Commit -> Bool
-isDelete (Commit _ Delete _ _) = True
+isDelete (Commit (_, Delete, _, _)) = True
 isDelete _ = False
 
 -----
 
 isSet :: Commit -> Bool
-isSet commit = not $ isDelete commit
+isSet = not . isDelete
 
 -----
 
@@ -187,11 +187,11 @@ toString c = do
 
 toString' :: (MonadIO m, MonadState String m, MonadError String m) =>
     Commit -> m (Key, String, ByteString, Hash, Hash, Timestamp)
-toString' (Commit key Delete hash ts) =
+toString' (Commit (key, Delete, hash, ts)) =
     return (key, "delete", BS.empty, "", hash, ts)
 
-toString' (Commit key (Set valueHash) hash ts) = do
-    value <- getValue (Commit key (Set valueHash) hash ts)
+toString' (Commit (key, Set valueHash, hash, ts)) = do
+    value <- getValue $ Commit (key, Set valueHash, hash, ts)
     return (key, "set", value, valueHash, hash, ts)
 
 -----
@@ -208,10 +208,10 @@ fromString' :: (MonadIO m, MonadState String m, MonadError String m) =>
     (Key, String, ByteString, Hash, Hash, Timestamp) -> m Commit
 
 fromString' (key, "delete", _, _, hash, ts) =
-    return $ Commit key Delete hash ts
+    return $ Commit (key, Delete, hash, ts)
 
 fromString' (key, "set", value, valueHash, hash, ts) = do
-    let commit = Commit key (Set valueHash) hash ts
+    let commit = Commit (key, Set valueHash, hash, ts)
     hdl <- open commit WriteMode
     ibPutStr hdl value
     iClose hdl

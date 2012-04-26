@@ -20,24 +20,24 @@ import qualified Cortex.Miranda.Commit as Commit
 -----
 
 -- Newest commit is first in the list.
-data CommitList = CommitList [Commit] (Set Commit.Hash)
+newtype CommitList = CommitList ([Commit], Set Commit.Hash)
 
 instance Binary CommitList where
-    put (CommitList l s) = B.put (l, s)
+    put (CommitList (l, s)) = B.put (l, s)
     get = do
         (l, s) <- B.get
-        return $ CommitList l s
+        return $ CommitList (l, s)
 
 -----
 
 empty :: CommitList
-empty = CommitList [] Set.empty
+empty = CommitList ([], Set.empty)
 
 -----
 -- Return list of commits, newest first.
 
 toList :: CommitList -> [Commit]
-toList (CommitList l _) = l
+toList (CommitList (l, _)) = l
 
 -----
 -- Returns new commit list and list of commits that are greater or equal (mostly
@@ -53,25 +53,25 @@ insert commit cl = fromMaybe (cl, []) $ do
 
 -- Undo commits newer than given commit.
 undo :: Commit -> CommitList -> [Commit] -> Maybe (CommitList, [Commit])
-undo c (CommitList [] s) r = return (CommitList [] s, c:r)
-undo c (CommitList (h:l) s) r
+undo c (CommitList ([], s)) r = return (CommitList ([], s), c:r)
+undo c (CommitList (h:l, s)) r
     | h > c = do
         let s' = Set.delete (Commit.getHash h) s
-        undo c (CommitList l s') (h:r)
-    | h < c = return (CommitList (h:l) s, c:r)
+        undo c (CommitList (l, s')) (h:r)
+    | h < c = return (CommitList (h:l, s), c:r)
     | otherwise = Nothing
 
 -- Reapply all commits from the list.
 redo :: CommitList -> [Commit] -> Maybe CommitList
 redo cl [] = return cl
-redo (CommitList l s) (h:t) = do
+redo (CommitList (l, s)) (h:t) = do
     let h' = Commit.rebase (listToMaybe l) h
     let s' = Set.insert (Commit.getHash h') s
-    redo (CommitList (h':l) s') t
+    redo (CommitList (h':l, s')) t
 
 -----
 
 member :: Commit.Hash -> CommitList -> Bool
-member hash (CommitList _ s) = Set.member hash s
+member hash (CommitList (_, s)) = Set.member hash s
 
 -----

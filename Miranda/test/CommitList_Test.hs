@@ -8,9 +8,9 @@ import Cortex.Miranda.CommitList
 
 test0 :: Test
 test0 = TestCase $ do
-    let a = C.Commit "a" (C.Set "1") "" "2012.03.18 20:32:32:910425188000"
-    let b = C.Commit "b" (C.Set "2") "" "2012.03.18 20:32:33:910425188000"
-    let c = C.Commit "c" (C.Set "3") "" "2012.03.18 20:32:34:910425188000"
+    let a = C.Commit ("a", C.Set "1", "", "2012.03.18 20:32:32:910425188000")
+    let b = C.Commit ("b", C.Set "2", "", "2012.03.18 20:32:33:910425188000")
+    let c = C.Commit ("c", C.Set "3", "", "2012.03.18 20:32:34:910425188000")
     let add x y = fst $ insert x y
     let cl1 = add a $ add b $ add c empty
     let cl2 = add a $ add c $ add b empty
@@ -46,9 +46,9 @@ test0 = TestCase $ do
 
 test1 :: Test
 test1 = TestCase $ do
-    let a = C.Commit "a" (C.Set "1") "" "2012.03.18 20:32:32:910425188000"
-    let b = C.Commit "b" (C.Set "2") "" "2012.03.18 20:32:33:910425188000"
-    let c = C.Commit "c" (C.Set "3") "" "2012.03.18 20:32:34:910425188000"
+    let a = C.Commit ("a", C.Set "1", "", "2012.03.18 20:32:32:910425188000")
+    let b = C.Commit ("b", C.Set "2", "", "2012.03.18 20:32:33:910425188000")
+    let c = C.Commit ("c", C.Set "3", "", "2012.03.18 20:32:34:910425188000")
     let add x y = fst $ insert x y
     let cl = add a $ add b $ add c empty
 
@@ -61,7 +61,7 @@ test1 = TestCase $ do
 
 test2 :: Test
 test2 = TestCase $ do
-    let a = C.Commit "a" (C.Set "1") "" "2012.03.18 20:32:32:910425188000"
+    let a = C.Commit ("a", C.Set "1", "", "2012.03.18 20:32:32:910425188000")
     let add x y = fst $ insert x y
     let cl = add a $ add a $ add a empty
     let r = snd $ insert a cl
