@@ -8,7 +8,6 @@ module Cortex.Common.Error
 
 import Control.Monad.Error (catchError, MonadError)
 import Control.Monad.Trans (MonadIO)
-import System.IO (stderr)
 
 import Cortex.Common.ErrorIO
 
@@ -28,6 +27,6 @@ ignoreError s = s `catchError` (\_ -> return ())
 -----
 
 reportError :: (MonadError String m, MonadIO m) => String -> m ()
-reportError e = iPutStrLn stderr $ "Error: " ++ e
+reportError e = iPrintLog $ "Error: " ++ e
 
 -----

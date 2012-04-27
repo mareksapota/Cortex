@@ -10,14 +10,14 @@ import Control.Monad.Error
 import System.IO.Unsafe
 
 -----
--- Run tests in `Error String`, `State String`, and `IO` monads.  State points
--- to a temporary directory.
+-- Run tests in `Error String`, `State ByteString`, and `IO` monads.  State
+-- points to a temporary directory.
 
 runInIOStateError :: ErrorT String (StateT String IO) Assertion -> Test
 runInIOStateError s = TestCase $ unsafePerformIO inIO
     where
         inIO :: IO Assertion
-        inIO = withSystemTempDirectory "hunit" (evalStateT inState)
+        inIO = withSystemTempDirectory "hunit" $ evalStateT inState
 
         inState :: StateT String IO Assertion
         inState = do
@@ -29,14 +29,14 @@ runInIOStateError s = TestCase $ unsafePerformIO inIO
 -----
 
 -----
--- Run tests in `Error String`, `State String`, and `IO` monads expecting a
+-- Run tests in `Error String`, `State ByteString`, and `IO` monads expecting a
 -- failure.  State points to a temporary directory.
 
 runFailInIOStateError :: ErrorT String (StateT String IO) a -> Test
 runFailInIOStateError s = TestCase $ unsafePerformIO inIO
     where
         inIO :: IO Assertion
-        inIO = withSystemTempDirectory "hunit" (evalStateT inState)
+        inIO = withSystemTempDirectory "hunit" $ evalStateT inState
 
         inState :: StateT String IO Assertion
         inState = do

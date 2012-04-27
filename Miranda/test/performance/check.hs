@@ -1,15 +1,17 @@
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE ScopedTypeVariables, OverloadedStrings #-}
 
 import Control.Monad.Error (ErrorT, runErrorT, catchError)
 import Control.Monad.State
 import System.IO
 import Control.Concurrent.Lifted
+import qualified Data.ByteString.Lazy.Char8 as LBS
 
 import Cortex.Common.OptParse (CmdArgs)
 import Cortex.Common.MonadOptParse
 import qualified Cortex.Common.OptParse as OptParse
 import Cortex.Common.Error
-import Cortex.Common.ErrorIO
+import Cortex.Common.LazyIO
+import Cortex.Common.ErrorIO (iSetBuffering, iConnectTo)
 
 type StateVars = (String, Int, MVar (Int, Int), MVar ())
 
@@ -63,10 +65,10 @@ run atOnce = do
             (_, _, mv, _) <- get
             (toDo, next) <- takeMVar mv
             putMVar mv (toDo, next - 1)
-            runInstance next
+            runInstance next (makeKey next)
 
-runInstance :: Int -> StateT StateVars (ErrorT String IO) ()
-runInstance i = do
+runInstance :: Int -> LBS.ByteString -> StateT StateVars (ErrorT String IO) ()
+runInstance i k = do
     { do
         { perform_set
         ; perform_get
@@ -75,38 +77,39 @@ runInstance i = do
     ; (_, _, mv, block) <- get
     ; (toDo, next) <- takeMVar mv
     ; putMVar mv (toDo - 1, next - 1)
-    ; when (next > 0) (runInstance next)
+    ; when (next > 0) (runInstance next (makeKey next))
     ; when (toDo - 1 == 0) $ putMVar block ()
     }
     where
         retry e = do
             reportError e
-            runInstance i
+            runInstance i k
 
         perform_delete = do
             (host, port, _, _) <- get
             hdl <- iConnectTo host port
-            iSetBuffering hdl (BlockBuffering $ Just 32)
-            iPutStrLn hdl "delete"
-            iPutStrLn hdl $ concat ["test::", show i]
-            iClose hdl
+            lPutStrLn hdl "delete"
+            lPutStrLn hdl k
+            lClose hdl
 
         perform_set = do
             (host, port, _, _) <- get
             hdl <- iConnectTo host port
-            iSetBuffering hdl (BlockBuffering $ Just 32)
-            iPutStrLn hdl "set"
-            iPutStrLn hdl $ concat ["test::", show i]
-            iPutStrLn hdl $ show i
-            iClose hdl
+            lPutStrLn hdl "set"
+            lPutStrLn hdl k
+            lPutStrLn hdl k
+            lClose hdl
 
         perform_get = do
             (host, port, _, _) <- get
             hdl <- iConnectTo host port
-            iSetBuffering hdl (BlockBuffering $ Just 32)
-            iPutStrLn hdl "lookup"
-            iPutStrLn hdl $ concat ["test::", show i]
-            iFlush hdl
-            response <- iGetLine hdl
-            iClose hdl
-            when (response /= concat ["Just ", show i]) perform_get
+            lPutStrLn hdl "lookup"
+            lPutStrLn hdl k
+            lFlush hdl
+            response <- lGetLine hdl
+            lClose hdl
+            -- Drop the "Just ".
+            when (LBS.drop 5 response /= k) perform_get
+
+makeKey :: Int -> LBS.ByteString
+makeKey i = LBS.concat ["test::", LBS.pack $ show i]

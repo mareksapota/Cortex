@@ -1,4 +1,4 @@
-{-# LANGUAGE Rank2Types, FlexibleContexts #-}
+{-# LANGUAGE Rank2Types, FlexibleContexts, OverloadedStrings #-}
 
 module Cortex.Miranda.ValueTree
     ( ValueTree
@@ -22,7 +22,8 @@ import Control.Monad.Trans (MonadIO)
 import Control.Monad.Error (MonadError)
 import Control.Monad.State (MonadState)
 import Data.Maybe (isNothing, fromJust)
-import Data.ByteString.Lazy.Char8 (ByteString)
+import qualified Data.ByteString.Lazy.Char8 as LBS
+import qualified Data.ByteString.Char8 as BS
 import Data.Binary (Binary)
 import qualified Data.Binary as B
 
@@ -35,7 +36,7 @@ type SIM m a = (MonadIO m, MonadError String m, MonadState String m) => m a
 
 -----
 
-newtype ValueTree = Node (Map String ValueTree, Maybe Commit)
+newtype ValueTree = Node (Map BS.ByteString ValueTree, Maybe Commit)
     deriving (Eq)
 
 instance Binary ValueTree where
@@ -52,10 +53,10 @@ empty = Node (Map.empty, Nothing)
 -----
 -- Get value corresponding to given key.
 
-lookup :: String -> ValueTree -> SIM m (Maybe ByteString)
+lookup :: BS.ByteString -> ValueTree -> SIM m (Maybe LBS.ByteString)
 lookup key t = lookup' (split key) t
 
-lookup' :: [String] -> ValueTree -> SIM m (Maybe ByteString)
+lookup' :: [BS.ByteString] -> ValueTree -> SIM m (Maybe LBS.ByteString)
 lookup' [] (Node (_, c))
     | isNothing c = return Nothing
     | otherwise = do
@@ -68,10 +69,10 @@ lookup' (k:key) (Node (m, _))
 -----
 -- Get hash of the value corresponding to given key.
 
-lookupHash :: String -> ValueTree -> SIM m (Maybe String)
+lookupHash :: BS.ByteString -> ValueTree -> SIM m (Maybe BS.ByteString)
 lookupHash key t = lookupHash' (split key) t
 
-lookupHash' :: [String] -> ValueTree -> SIM m (Maybe String)
+lookupHash' :: [BS.ByteString] -> ValueTree -> SIM m (Maybe BS.ByteString)
 lookupHash' [] (Node (_, c))
     | isNothing c = return Nothing
     | otherwise = do
@@ -84,30 +85,30 @@ lookupHash' (k:key) (Node (m, _))
 -----
 -- Get all commits corresponding to given key prefix.
 
-lookupAll :: String -> ValueTree -> SIM m [(String, ByteString)]
+lookupAll :: BS.ByteString -> ValueTree -> SIM m [(BS.ByteString, LBS.ByteString)]
 lookupAll key t = lookupAllWhere key (\_ _ -> True) t
 
 -----
 -- Get all commits corresponding to given key prefix where (partial key, value)
 -- pair holds given property.
 
-lookupAllWhere :: String -> (String -> ByteString -> Bool) -> ValueTree ->
-    SIM m [(String, ByteString)]
+lookupAllWhere :: BS.ByteString -> (BS.ByteString -> LBS.ByteString -> Bool) ->
+    ValueTree -> SIM m [(BS.ByteString, LBS.ByteString)]
 lookupAllWhere key f vt = lookupAllWhere' (split key) f vt
 
-lookupAllWhere' :: [String] -> (String -> ByteString -> Bool) -> ValueTree ->
-    SIM m [(String, ByteString)]
+lookupAllWhere' :: [BS.ByteString] -> (BS.ByteString -> LBS.ByteString -> Bool) ->
+    ValueTree -> SIM m [(BS.ByteString, LBS.ByteString)]
 lookupAllWhere' [] f vt = getAll f vt
 lookupAllWhere' (k:key) f (Node (m, _))
     | Map.member k m = lookupAllWhere' key f (m Map.! k)
     | otherwise = return []
 
-getAll :: (String -> ByteString -> Bool) -> ValueTree ->
-    SIM m [(String, ByteString)]
+getAll :: (BS.ByteString -> LBS.ByteString -> Bool) -> ValueTree ->
+    SIM m [(BS.ByteString, LBS.ByteString)]
 getAll f v = getAll' "" f v
 
-getAll' :: String -> (String -> ByteString -> Bool) -> ValueTree ->
-    SIM m [(String, ByteString)]
+getAll' :: BS.ByteString -> (BS.ByteString -> LBS.ByteString -> Bool) ->
+    ValueTree -> SIM m [(BS.ByteString, LBS.ByteString)]
 getAll' k f (Node (m, Just c)) = do
     rest <- getAll' k f (Node (m, Nothing))
     v <- Commit.getValue c
@@ -115,7 +116,7 @@ getAll' k f (Node (m, Just c)) = do
         then return $ (k, v):rest
         else return rest
 getAll' k f (Node (m, Nothing)) = do
-    let extend key = if null k then key else k ++ "::" ++ key
+    let extend key = if BS.null k then key else BS.concat [k, "::", key]
     l <- mapM
         (\(k', vt') -> getAll' (extend k') f vt')
         (Map.toList m)
@@ -133,10 +134,10 @@ toList (Node (m, v)) = do
 
 -----
 
-insert :: String -> Commit -> ValueTree -> ValueTree
+insert :: BS.ByteString -> Commit -> ValueTree -> ValueTree
 insert key commit vt = insert' (split key) commit vt
 
-insert' :: [String] -> Commit -> ValueTree -> ValueTree
+insert' :: [BS.ByteString] -> Commit -> ValueTree -> ValueTree
 insert' [] commit (Node (m, _)) = Node (m, Just commit)
 insert' (k:key) commit (Node (m, v)) = Node (Map.alter f k m, v)
     where
@@ -145,10 +146,10 @@ insert' (k:key) commit (Node (m, v)) = Node (Map.alter f k m, v)
 
 -----
 
-delete :: String -> ValueTree -> ValueTree
+delete :: BS.ByteString -> ValueTree -> ValueTree
 delete key vt = maybe empty id (delete' (split key) vt)
 
-delete' :: [String] -> ValueTree -> Maybe ValueTree
+delete' :: [BS.ByteString] -> ValueTree -> Maybe ValueTree
 delete' [] (Node (m, _))
     | Map.null m = Nothing
     | otherwise = Just $ Node (m, Nothing)
@@ -170,13 +171,14 @@ apply commit vt
 -----
 
 -- Split key at '::' and return list of key parts.
-split :: String -> [String]
+split :: BS.ByteString -> [BS.ByteString]
 split "" = []
 split key = do
-    let (h, t) = foldl f ([], []) key
-    reverse ((reverse h):t)
+    let (h, t) = BS.foldl f ([], []) key
+    reverse ((BS.reverse $ BS.pack h):t)
     where
-        f (':':h, t) ':' = ([], (reverse h):t)
+        f :: (String, [BS.ByteString]) -> Char -> (String, [BS.ByteString])
+        f (':':h, t) ':' = ([], (BS.reverse $ BS.pack h):t)
         f (h, t) c = (c:h, t)
 
 -----

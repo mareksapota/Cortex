@@ -5,8 +5,10 @@ module Cortex.Saffron.Apps.Static
 
 -----
 
+import Control.Monad (liftM)
 import Control.Concurrent.Lifted
 import Text.StringTemplate
+import qualified Data.ByteString.Lazy.Char8 as LBS
 
 import Cortex.Saffron.GrandMonadStack
 import qualified Cortex.Saffron.Apps.Common as Common
@@ -21,9 +23,9 @@ prepare _ = return ()
 
 run :: Int -> String -> AppManagerMonadStack (MVar (), MVar Int)
 run port location = do
-    conf <- iReadFile "Saffron/Apps/nginx.static.conf"
+    conf <- liftM LBS.unpack $ iReadFile "Saffron/Apps/nginx.static.conf"
     let template = newSTMP conf :: StringTemplate String
-    let conf' = toString $ setAttribute "PORT" port $
+    let conf' = LBS.pack $ toString $ setAttribute "PORT" port $
             setAttribute "LOCATION" (location ++ "/repo") template
     iWriteFile (location ++ "/nginx.conf." ++ (show port)) conf'
     Common.run port "nginx"

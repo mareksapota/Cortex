@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts, ScopedTypeVariables #-}
+{-# LANGUAGE FlexibleContexts, ScopedTypeVariables, OverloadedStrings, Rank2Types #-}
 
 module Cortex.Miranda.CommitRaw where
 
@@ -10,30 +10,33 @@ module Cortex.Miranda.CommitRaw where
 import Control.Monad.Trans (MonadIO)
 import Control.Monad.Error (MonadError, throwError)
 import Control.Monad.State (MonadState, get)
-import System.IO (IOMode (ReadMode, WriteMode, AppendMode), Handle)
-import Data.ByteString.Lazy.Char8 (ByteString)
-import qualified Data.ByteString.Lazy.Char8 as BS
+import System.IO (IOMode (ReadMode, WriteMode))
+import qualified Data.ByteString.Lazy.Char8 as LBS
+import qualified Data.ByteString.Char8 as BS
 import Data.Binary (Binary)
 import qualified Data.Binary as B
 import Data.Maybe (isNothing, fromJust)
 import OpenSSL.EVP.Base64 (encodeBase64LBS, decodeBase64LBS)
 
 import qualified Cortex.Common.Sha1 as Sha1
-import Cortex.Common.ErrorIO
+import Cortex.Common.LazyIO
+import Cortex.Common.ErrorIO (iEncode, iDecode, iRawSystem, iOpenTempFile)
 import Cortex.Common.Time
 
 -----
 
-type Key = String
-type Hash = String
+type Key = BS.ByteString
+type Hash = BS.ByteString
 type Timestamp = String
 
 data Operation =
       Set Hash
     | Delete
-    deriving (Eq, Show)
+    deriving (Eq)
 
 newtype Commit = Commit (Key, Operation, Hash, Timestamp)
+
+-----
 
 instance Eq Commit where
     (Commit (k1, op1, _, t1)) == (Commit (k2, op2, _, t2)) =
@@ -75,43 +78,47 @@ instance Binary Commit where
         return $ Commit (key, op, hash, ts)
 
 -----
--- Open commit storage.
 
-open :: (MonadIO m, MonadState String m, MonadError String m) =>
-    Commit -> IOMode -> m Handle
-open (Commit (key, Set hash, _, ts)) mode = do
+type SIM m a = (MonadIO m, MonadState String m, MonadError String m) => m a
+
+-----
+-- Get location of commit storage.
+
+getLocation :: Commit -> SIM m String
+getLocation (Commit (key, Set hash, _, ts)) = do
     storage <- get
     -- Uses the same things as equality testing, the same location can be only
     -- used by identical commits.
-    let location = concat [storage, "/", key, ".", hash, ".", ts]
-    -- Because of lazy IO saved commit might not be actually saved to disc and
-    -- opening it will result in a file already locked error.  To counter that,
-    -- this will wait until the lock is lifted.
-    iPersistentOpen location mode
-open (Commit (_, Delete, _, _)) _ = throwError "Can't open delete commits"
+    return $ concat
+        [ storage
+        , "/"
+        , BS.unpack key
+        , "."
+        , BS.unpack hash
+        , "."
+        , ts
+        ]
+getLocation (Commit (_, Delete, _, _)) = throwError "Can't open delete commits"
 
 -----
 -- Create a new set type commit.
 
-set :: (MonadIO m, MonadState String m, MonadError String m) =>
-    String -> ByteString -> m Commit
+set :: BS.ByteString -> LBS.ByteString -> SIM m Commit
 set key value = do
-    let hash = Sha1.bhash value
+    let hash = Sha1.lhash value
     ts <- getBigEndianTimestamp
     let commit = Commit (key, Set hash, "", ts)
-    hdl <- open commit WriteMode
-    ibPutStr hdl value
-    iClose hdl
-    -- Lazy IO hack.  Make sure value is on disc before exiting.
-    hdl' <- open commit AppendMode
-    iClose hdl'
-    -- End of lazy IO hack.
+    location <- getLocation commit
+    (tmp, hdl) <- iOpenTempFile "/tmp" "commit"
+    lPutStr hdl value
+    lClose hdl
+    iRawSystem "mv" [tmp, location]
     return commit
 
 -----
 -- Create a new delete type commit.
 
-delete :: (MonadIO m) => String -> m Commit
+delete :: (MonadIO m) => BS.ByteString -> m Commit
 delete key = do
     ts <- getBigEndianTimestamp
     return $ Commit (key, Delete, "", ts)
@@ -119,12 +126,13 @@ delete key = do
 -----
 -- Read commit value from storage.
 
-getValue :: (MonadIO m, MonadState String m, MonadError String m) =>
-    Commit -> m ByteString
+getValue :: Commit -> SIM m LBS.ByteString
 getValue commit = do
-    hdl <- open commit ReadMode
-    value <- ibGetContents hdl
-    return value
+    location <- getLocation commit
+    hdl <- lOpenFile location ReadMode
+    v <- lGetContents hdl
+    lClose hdl
+    return v
 
 -----
 -- Get Sha1 hash of commit's value.
@@ -145,19 +153,23 @@ rebase' :: Hash -> Commit -> Commit
 rebase' parentHash (Commit (key, op, _, ts)) = Commit (key, op, newHash, ts)
     where
         newHash :: Hash
-        newHash = Sha1.hash $ concat
+        newHash = Sha1.hash $ BS.concat
             [ parentHash
             , " "
             , key
             , " "
-            , show op
+            , hashOp op
             , " "
-            , ts
+            , BS.pack ts
             ]
+
+        hashOp :: Operation -> BS.ByteString
+        hashOp Delete = "Delete"
+        hashOp (Set vh) = BS.concat ["Set \"", vh, "\""]
 
 -----
 
-getKey :: Commit -> String
+getKey :: Commit -> BS.ByteString
 getKey (Commit (key, _, _, _)) = key
 
 -----
@@ -178,17 +190,15 @@ isSet = not . isDelete
 
 -----
 
-toString :: (MonadIO m, MonadState String m, MonadError String m) =>
-    Commit -> m ByteString
+toString :: Commit -> SIM m LBS.ByteString
 toString c = do
     t <- toString' c
     e <- iEncode t
     return $ encodeBase64LBS e
 
-toString' :: (MonadIO m, MonadState String m, MonadError String m) =>
-    Commit -> m (Key, String, ByteString, Hash, Hash, Timestamp)
+toString' :: Commit -> SIM m (Key, BS.ByteString, LBS.ByteString, Hash, Hash, Timestamp)
 toString' (Commit (key, Delete, hash, ts)) =
-    return (key, "delete", BS.empty, "", hash, ts)
+    return (key, "delete", "", "", hash, ts)
 
 toString' (Commit (key, Set valueHash, hash, ts)) = do
     value <- getValue $ Commit (key, Set valueHash, hash, ts)
@@ -196,29 +206,25 @@ toString' (Commit (key, Set valueHash, hash, ts)) = do
 
 -----
 
-fromString :: (MonadIO m, MonadState String m, MonadError String m) =>
-    ByteString -> m Commit
-
+fromString :: LBS.ByteString -> SIM m Commit
 fromString s = do
     let d = decodeBase64LBS s
-    (tuple :: (Key, String, ByteString, Hash, Hash, Timestamp)) <- iDecode d
+    (tuple :: (Key, BS.ByteString, LBS.ByteString, Hash, Hash, Timestamp)) <- iDecode d
     fromString' tuple
 
-fromString' :: (MonadIO m, MonadState String m, MonadError String m) =>
-    (Key, String, ByteString, Hash, Hash, Timestamp) -> m Commit
+fromString' :: (Key, BS.ByteString, LBS.ByteString, Hash, Hash, Timestamp) ->
+    SIM m Commit
 
 fromString' (key, "delete", _, _, hash, ts) =
     return $ Commit (key, Delete, hash, ts)
 
 fromString' (key, "set", value, valueHash, hash, ts) = do
     let commit = Commit (key, Set valueHash, hash, ts)
-    hdl <- open commit WriteMode
-    ibPutStr hdl value
-    iClose hdl
-    -- Lazy IO hack.  Make sure value is on disc before exiting.
-    hdl' <- open commit AppendMode
-    iClose hdl'
-    -- End of lazy IO hack.
+    location <- getLocation commit
+    (tmp, hdl) <- iOpenTempFile "/tmp" "commit"
+    lPutStr hdl value
+    lClose hdl
+    iRawSystem "mv" [tmp, location]
     return commit
 
 fromString' _ = throwError "Couldn't parse the commit string"

@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module Cortex.Saffron.Apps.Common
     ( run
     ) where
@@ -7,17 +9,18 @@ module Cortex.Saffron.Apps.Common
 import Control.Concurrent.Lifted
 import Control.Monad.State
 import Control.Monad.Error (catchError)
-import System.IO (stderr)
 import System.Process
     ( waitForProcess
     , terminateProcess
     , getProcessExitCode
     )
 import Data.Maybe (isNothing)
+import qualified Data.ByteString.Lazy.Char8 as LBS
 
 import Cortex.Saffron.GrandMonadStack
 import qualified Cortex.Saffron.Config as Config
-import Cortex.Common.ErrorIO
+import Cortex.Common.ErrorIO (iRunProcess, iPrintLog, iConnectTo)
+import Cortex.Common.LazyIO
 
 -----
 
@@ -41,8 +44,8 @@ run port cmd args location env = do
             ; e <- liftIO $ getProcessExitCode proc
             -- No need to kill this instance if it's already dead.
             ; when (isNothing e) $ do
-                { iPutStrLn stderr $ concat
-                    [  app
+                { iPrintLog $ concat
+                    [  LBS.unpack app
                     , " instance on port "
                     , show port
                     , " accortding to Miranda doesn't exist, stopping"
@@ -54,7 +57,7 @@ run port cmd args location env = do
 
         ; liftIO $ waitForProcess proc
         ; putMVar finished port
-        ; iPutStrLn stderr $ app ++ " instance stopped on port " ++ (show port)
+        ; iPrintLog $ (LBS.unpack app) ++ " instance stopped on port " ++ (show port)
         }
     return (stop, finished)
 
@@ -63,20 +66,20 @@ run port cmd args location env = do
 amIAlive :: Int -> AppManagerMonadStack Bool
 amIAlive port = do
     { (h, p, app, _) <- get
-    ; let key = concat
+    ; let key = LBS.concat
             [ "app::instance::"
             , app
             , "::"
-            , Config.host
+            , LBS.pack Config.host
             , ":"
-            , show port
+            , LBS.pack $ show port
             ]
     ; hdl <- iConnectTo h p
-    ; iPutStrLn hdl "lookup"
-    ; iPutStrLn hdl key
-    ; iFlush hdl
-    ; value <- iGetLine hdl
-    ; iClose hdl
+    ; lPutStrLn hdl "lookup"
+    ; lPutStrLn hdl key
+    ; lFlush hdl
+    ; value <- lGetLine hdl
+    ; lClose hdl
     ; return (value /= "Nothing")
     -- Ignore connection errors, assume everything is OK.
     } `catchError` (\_ -> return True)

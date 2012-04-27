@@ -21,7 +21,8 @@ import Prelude hiding (lookup)
 import Control.Monad.Trans (MonadIO)
 import Control.Monad.Error (MonadError)
 import Control.Monad.State (MonadState)
-import Data.ByteString.Lazy.Char8 (ByteString)
+import qualified Data.ByteString.Lazy.Char8 as LBS
+import qualified Data.ByteString.Char8 as BS
 import Data.Binary (Binary)
 import qualified Data.Binary as B
 import Control.Parallel (par, pseq)
@@ -54,7 +55,7 @@ empty = ValueStorage (VT.empty, CL.empty)
 
 -----
 
-set :: String -> ByteString -> ValueStorage -> SIM m ValueStorage
+set :: BS.ByteString -> LBS.ByteString -> ValueStorage -> SIM m ValueStorage
 set key value (ValueStorage (vt, cl)) = do
     c <- Commit.set key value
     let vt' = VT.insert key c vt
@@ -63,7 +64,7 @@ set key value (ValueStorage (vt, cl)) = do
 
 -----
 
-delete :: (MonadIO m) => String -> ValueStorage -> m ValueStorage
+delete :: (MonadIO m) => BS.ByteString -> ValueStorage -> m ValueStorage
 delete key (ValueStorage (vt, cl)) = do
     c <- Commit.delete key
     let vt' = VT.delete key vt
@@ -72,23 +73,23 @@ delete key (ValueStorage (vt, cl)) = do
 
 -----
 
-lookup :: String -> ValueStorage -> SIM m (Maybe ByteString)
+lookup :: BS.ByteString -> ValueStorage -> SIM m (Maybe LBS.ByteString)
 lookup key (ValueStorage (vt, _)) = VT.lookup key vt
 
 -----
 
-lookupHash :: String -> ValueStorage -> SIM m (Maybe String)
+lookupHash :: BS.ByteString -> ValueStorage -> SIM m (Maybe BS.ByteString)
 lookupHash key (ValueStorage (vt, _)) = VT.lookupHash key vt
 
 -----
 
-lookupAll :: String -> ValueStorage -> SIM m [(String, ByteString)]
+lookupAll :: BS.ByteString -> ValueStorage -> SIM m [(BS.ByteString, LBS.ByteString)]
 lookupAll key (ValueStorage (vt, _)) = VT.lookupAll key vt
 
 -----
 
-lookupAllWhere :: String -> (String -> ByteString -> Bool) -> ValueStorage ->
-    SIM m [(String, ByteString)]
+lookupAllWhere :: BS.ByteString -> (BS.ByteString -> LBS.ByteString -> Bool) ->
+    ValueStorage -> SIM m [(BS.ByteString, LBS.ByteString)]
 lookupAllWhere key f (ValueStorage (vt, _)) = VT.lookupAllWhere key f vt
 
 -----

@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
 
 module Cortex.Saffron.AppManager
     ( runAppManager
@@ -11,10 +11,8 @@ import Control.Monad.State (get, evalStateT)
 import Control.Monad.Error (throwError, catchError)
 import Control.Monad (forM_, forM, when, liftM)
 import Control.Monad.Trans (lift, liftIO)
-import System.IO (stderr)
 import Control.Concurrent.Lifted hiding (killThread)
-import Data.ByteString.Lazy.Char8 (ByteString)
-import qualified Data.ByteString.Lazy.Char8 as BS
+import qualified Data.ByteString.Lazy.Char8 as LBS
 import Data.Map (Map)
 import qualified Data.Map as Map
 import System.IO.Temp (createTempDirectory)
@@ -22,7 +20,8 @@ import Data.Maybe (catMaybes, fromJust, isNothing, isJust)
 import System.Random (randomRIO)
 
 import Cortex.Saffron.GrandMonadStack
-import Cortex.Common.ErrorIO
+import Cortex.Common.ErrorIO (iPrintLog, iConnectTo, iRawSystem, iReadProcess)
+import Cortex.Common.LazyIO
 import Cortex.Common.Error
 import Cortex.Common.Event
 import Cortex.Common.MaybeRead
@@ -33,7 +32,7 @@ import qualified Cortex.Saffron.Apps.Rails as AppRails
 
 -----
 
-knownAppTypes :: Map String
+knownAppTypes :: Map LBS.ByteString
     ( String -> AppManagerMonadStack ()
     , Int -> String -> AppManagerMonadStack (MVar (), MVar Int)
     )
@@ -45,7 +44,7 @@ knownAppTypes = Map.fromList
 
 -----
 
-runAppManager :: String -> ManagerMonadStack ()
+runAppManager :: LBS.ByteString -> ManagerMonadStack ()
 runAppManager app = do
     (host, port, _) <- get
     a <- newMVar []
@@ -58,7 +57,7 @@ runAppManager app = do
 runAppManager' :: AppManagerMonadStack ()
 runAppManager' = do
     { (_, _, app, mv) <- get
-    ; iPutStrLn stderr $ "Running app manager for a new app: " ++ app
+    ; iPrintLog $ "Running app manager for a new app: " ++ (LBS.unpack app)
     ; lock <- newEmptyMVar
     ; t1 <- addTimer lock Config.managerUpdateTime checkSource
     ; t2 <- addTimer lock Config.managerUpdateTime addInstance
@@ -73,7 +72,7 @@ runAppManager' = do
     ; (threads, _, _, location) <- takeMVar mv
     ; ignoreError (killAllThreads threads)
     ; ignoreError (removeLocation location)
-    } `catchError` (\e -> iPutStrLn stderr $ "Error: " ++ e)
+    } `catchError` reportError
 
 -----
 -- WARNING: Make sure that timers leave consistent state even if some operation
@@ -109,17 +108,17 @@ addTimer lock t s = periodicTimer t $ do
 
 checkSource :: AppManagerState -> AppManagerMonadStack ()
 checkSource (threads, appType, sourceHash, location) = do
-    { newAppType <- liftM BS.unpack $ getProperty "type"
+    { newAppType <- getProperty "type"
     ; newSourceHash <- getPropertyHash "source"
     ; appType' <- readMVar appType
     ; sourceHash' <- readMVar sourceHash
     ; when ((appType' /= newAppType) || (sourceHash' /= newSourceHash)) $ do
         { (host, port, app, _) <- get
-        ; iPutStrLn stderr $ "Reloading app manager: " ++ app
+        ; iPrintLog $ "Reloading app manager: " ++ (LBS.unpack app)
         ; killAllThreads threads
         ; removeLocation location
         ; when (not $ Map.member newAppType knownAppTypes) $
-            throwError $ "Unsupported app type: " ++ newAppType
+            throwError $ "Unsupported app type: " ++ (LBS.unpack newAppType)
         ; newLocation <- makeNewLocation location
         ; takeMVar appType
         ; takeMVar sourceHash
@@ -129,7 +128,7 @@ checkSource (threads, appType, sourceHash, location) = do
         ; iRawSystem "Saffron/GetSource.py"
             [ host
             , show port
-            , app
+            , LBS.unpack app
             , newLocation
             ]
         ; (fst (knownAppTypes Map.! newAppType)) newLocation
@@ -145,11 +144,13 @@ cmpInstances :: (Int -> Int -> Bool) -> AppManagerMonadStack Bool
 cmpInstances f = do
     (host, port, app, _) <- get
     hdl <- iConnectTo host port
-    iPutStrLn hdl "lookup all"
-    iPutStrLn hdl $ "app::instance::" ++ app
-    iFlush hdl
-    running <- (liftM $ length . BS.lines) $ ibGetContents hdl
-    requested <- (liftM $ maybeRead . BS.unpack) $ getProperty "instances"
+    lPutStrLn hdl "lookup all"
+    lPutStr hdl "app::instance::"
+    lPutStrLn hdl app
+    lFlush hdl
+    running <- liftM length $ lGetLines hdl
+    lClose hdl
+    requested <- (liftM $ maybeRead . LBS.unpack) $ getProperty "instances"
     when (isNothing requested) $ throwError "Expected a numeric value"
     return $ f running (fromJust requested)
 
@@ -176,23 +177,23 @@ addInstance (threads, appType, _, location) = do
         -- Pick a random port, if it's taken then this instance will get killed,
         -- but it's OK, another one will take it's place.
         port <- liftIO $ randomRIO (1025, 65535)
-        iPutStrLn stderr $ "Running a new instance of " ++ app ++
+        iPrintLog $ "Running a new instance of " ++ (LBS.unpack app) ++
             " on port " ++ (show port)
         a <- (snd (knownAppTypes Map.! appType')) port (fromJust location')
         addThread a threads
         -- Notify Miranda.
         hdl <- iConnectTo h p
-        iPutStrLn hdl "set"
-        iPutStrLn hdl $ concat
+        lPutStrLn hdl "set"
+        lPutStrLn hdl $ LBS.concat
             [ "app::instance::"
             , app
             , "::"
-            , Config.host
+            , LBS.pack Config.host
             , ":"
-            , show port
+            , LBS.pack $ show port
             ]
-        iPutStrLn hdl "online"
-        iClose hdl
+        lPutStrLn hdl "online"
+        lClose hdl
 
 -----
 
@@ -204,7 +205,7 @@ killInstance (threads, _, _, _) = do
     -- running.
     when (act1 || act2) $ do
         (_, _, app, _) <- get
-        iPutStrLn stderr $ "Killing an instance of " ++ app
+        iPrintLog $ "Killing an instance of " ++ (LBS.unpack app)
         killOneThread threads
 
 -----
@@ -239,11 +240,11 @@ getLoad :: AppManagerMonadStack (Double, Double)
 getLoad = do
     { (host, port, _, _) <- get
     ; hdl <- iConnectTo host port
-    ; iPutStrLn hdl "lookup all"
-    ; iPutStrLn hdl "host::load"
-    ; iFlush hdl
-    ; hosts' <- (liftM $ map BS.unpack . BS.lines) $ ibGetContents hdl
-    ; let hosts = map ("host::load::" ++) hosts'
+    ; lPutStrLn hdl "lookup all"
+    ; lPutStrLn hdl "host::load"
+    ; lFlush hdl
+    ; hosts' <- lGetLines hdl
+    ; let hosts = map (LBS.append "host::load::") hosts'
     ; values' <- forM hosts getValue
     -- Some keys may have been unset between the `lookup all` call and now,
     -- ignore them and use only the set values.
@@ -256,18 +257,18 @@ getLoad = do
     ; return (fromJust self, avg)
     }
     where
-        getValue :: MaybeRead a => String -> AppManagerMonadStack (Maybe a)
+        getValue :: MaybeRead a => LBS.ByteString -> AppManagerMonadStack (Maybe a)
         getValue key = do
             (host, port, _, _) <- get
             hdl <- iConnectTo host port
-            iPutStrLn hdl "lookup"
-            iPutStrLn hdl key
-            iFlush hdl
-            v' <- (liftM $ BS.takeWhile (/= '\n')) $ ibGetContents hdl
-            let v = BS.unpack v'
+            lPutStrLn hdl "lookup"
+            lPutStrLn hdl key
+            lFlush hdl
+            v <- lGetLine hdl
             if (v == "Nothing")
                 then return Nothing
-                else return $ maybeRead (drop 5 v)
+                -- Drop the "Just "
+                else return $ maybeRead $ LBS.unpack (LBS.drop 5 v)
 
 -----
 -- Use this only under the big lock.
@@ -296,7 +297,7 @@ makeNewLocation mv = do
     location <- takeMVar mv
     when (isJust location) $ throwError "Location is not empty"
     (_, _, app, _) <- get
-    dir <- liftIO $ createTempDirectory "/tmp" (app ++ ".source.")
+    dir <- liftIO $ createTempDirectory "/tmp" ((LBS.unpack app) ++ ".source.")
     putMVar mv (Just dir)
     return dir
 
@@ -345,20 +346,20 @@ killThread t = do
     -- Notify Miranda.
     (h, p, app, _) <- get
     hdl <- iConnectTo h p
-    iPutStrLn hdl "delete"
-    iPutStrLn hdl $ concat
+    lPutStrLn hdl "delete"
+    lPutStrLn hdl $ LBS.concat
         [ "app::instance::"
         , app
         , "::"
-        , Config.host
+        , LBS.pack Config.host
         , ":"
-        , show port
+        , LBS.pack $ show port
         ]
-    iClose hdl
+    lClose hdl
 
-    iPutStrLn stderr $ concat
+    iPrintLog $ concat
         [ "Instance of "
-        , app
+        , LBS.unpack app
         , " running on port "
         , show port
         , " is dead"
@@ -377,32 +378,36 @@ addThread t mv = do
 
 -----
 
-getProperty :: String -> AppManagerMonadStack ByteString
+getProperty :: LBS.ByteString -> AppManagerMonadStack LBS.ByteString
 getProperty property = do
     value <- getPropertyCommon property "lookup"
-    when ((BS.take 7 value) == (BS.pack "Nothing")) $
+    when ((LBS.take 7 value) == "Nothing") $
         throwError "Property is not set"
-    return $ BS.drop 5 value
+    -- Drop the "Just "
+    return $ LBS.drop 5 value
 
 -----
 
-getPropertyHash :: String -> AppManagerMonadStack String
+getPropertyHash :: LBS.ByteString -> AppManagerMonadStack LBS.ByteString
 getPropertyHash property = do
-    hash <- liftM BS.unpack $ getPropertyCommon property "lookup hash"
+    hash <- getPropertyCommon property "lookup hash"
     when (hash == "Nothing") $ throwError "Property is not set"
-    return $ drop 5 hash
+    -- Drop the "Just "
+    return $ LBS.drop 5 hash
 
 -----
 
-getPropertyCommon :: String -> String -> AppManagerMonadStack ByteString
+getPropertyCommon :: LBS.ByteString -> LBS.ByteString ->
+    AppManagerMonadStack LBS.ByteString
 getPropertyCommon property command = do
     (host, port, app, _) <- get
-    let key = concat ["app::", property, "::", app]
+    let key = LBS.concat ["app::", property, "::", app]
     hdl <- iConnectTo host port
-    iPutStrLn hdl command
-    iPutStrLn hdl key
-    iFlush hdl
-    bs <- ibGetContents hdl
-    return $ BS.takeWhile (/= '\n') bs
+    lPutStrLn hdl command
+    lPutStrLn hdl key
+    lFlush hdl
+    prop <- lGetLine hdl
+    lClose hdl
+    return prop
 
 -----

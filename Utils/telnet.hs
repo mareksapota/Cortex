@@ -10,7 +10,8 @@ import Control.Monad.Trans (liftIO)
 import System.IO
 import Data.Maybe (isNothing, fromJust)
 
-import Cortex.Common.ErrorIO
+import Cortex.Common.ErrorIO (iConnectTo, iPrintLog)
+import Cortex.Common.LazyIO
 import Cortex.Common.MonadOptParse
 import Cortex.Common.OptParse (CmdArgs)
 import qualified Cortex.Common.OptParse as OptParse
@@ -39,24 +40,25 @@ main' = do
     (host :: String) <- OptParse.getOptionWithDefault args "host" "localhost"
     when (isNothing port) (throwError "You have to specify port")
     hdl <- iConnectTo host (fromJust port)
-    iSetBuffering hdl LineBuffering
-    fork $ catchError (fromServer hdl) (reportError lock)
-    fork $ catchError (toServer hdl) (\_ -> liftIO $ putMVar lock ())
+    hIn <- lConvert stdin
+    hOut <- lConvert stdout
+    fork $ catchError (fromServer hOut hdl) (reportError lock)
+    fork $ catchError (toServer hIn hdl) (\_ -> liftIO $ putMVar lock ())
     liftIO $ takeMVar lock
     where
         reportError lock e = do
-            iPutStrLn stderr $ "Error: " ++ e
-            iPutStrLn stderr $ "Error: Connection to server terminated"
+            iPrintLog $ "Error: " ++ e
+            iPrintLog $ "Error: Connection to server terminated"
             putMVar lock ()
 
-fromServer :: Handle -> ErrorT String IO ()
-fromServer hdl = forever $ do
-    l <- iGetLine hdl
-    iPutStrLn stdout l
-    iFlush stdout
+fromServer :: LazyHandle -> LazyHandle -> ErrorT String IO ()
+fromServer hOut hdl = forever $ do
+    l <- lGetLine hdl
+    lPutStrLn hOut l
+    lFlush hOut
 
-toServer :: Handle -> ErrorT String IO ()
-toServer hdl = forever $ do
-    l <- iGetLine stdin
-    iPutStrLn hdl l
-    iFlush hdl
+toServer :: LazyHandle -> LazyHandle -> ErrorT String IO ()
+toServer hIn hdl = forever $ do
+    l <- lGetLine hIn
+    lPutStrLn hdl l
+    lFlush hdl

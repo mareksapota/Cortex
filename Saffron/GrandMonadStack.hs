@@ -9,6 +9,7 @@ import Control.Concurrent.Lifted (MVar)
 import Control.Monad.State (StateT)
 import Control.Monad.Error (ErrorT)
 import Data.Set (Set)
+import qualified Data.ByteString.Lazy.Char8 as LBS
 
 type LesserMonadStack = ErrorT String IO
 
@@ -16,7 +17,7 @@ type LesserMonadStack = ErrorT String IO
 type ManagerMonadStack = StateT
     ( String
     , Int
-    , MVar (Set String)
+    , MVar (Set LBS.ByteString)
     ) LesserMonadStack
 
 -- State holds Miranda host, port, app name, list of dependent threads (should
@@ -24,14 +25,14 @@ type ManagerMonadStack = StateT
 -- hash and app source location on disc.
 type AppManagerState =
     ( MVar [(MVar (), MVar Int)]
-    , MVar String
-    , MVar String
+    , MVar LBS.ByteString
+    , MVar LBS.ByteString
     , MVar (Maybe String)
     )
 
 type AppManagerMonadStack = StateT
     ( String
     , Int
-    , String
+    , LBS.ByteString
     , MVar AppManagerState
     ) LesserMonadStack

@@ -9,7 +9,7 @@ import Data.Maybe (isNothing, fromJust)
 import Cortex.Common.OptParse (CmdArgs)
 import Cortex.Common.MonadOptParse
 import qualified Cortex.Common.OptParse as OptParse
-import Cortex.Common.ErrorIO
+import Cortex.Common.ErrorIO (iSetBuffering)
 import Cortex.Miranda.GrandMonadStack
 import Cortex.Miranda.Storage (runStorage)
 import Cortex.Miranda.Server (runServer)

@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module Cortex.Saffron.Manager
     ( runManager
     ) where
@@ -10,12 +12,11 @@ import Control.Monad (forM_, when)
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Control.Concurrent.Lifted
-import Data.ByteString.Lazy.Char8 (ByteString)
-import qualified Data.ByteString.Lazy.Char8 as BS
-import System.IO (stderr)
+import qualified Data.ByteString.Lazy.Char8 as LBS
 
 import Cortex.Common.Event
-import Cortex.Common.ErrorIO
+import Cortex.Common.ErrorIO (iPrintLog, iConnectTo, iReadProcess)
+import Cortex.Common.LazyIO
 import Cortex.Common.Error
 import Cortex.Saffron.GrandMonadStack
 import qualified Cortex.Saffron.Config as Config
@@ -46,24 +47,24 @@ runManager' = do
 
 updateManager :: ManagerMonadStack ()
 updateManager = do
-    { iPutStrLn stderr "Looking for new apps"
+    { iPrintLog "Looking for new apps"
     ; (host, port, _) <- get
     ; hdl <- iConnectTo host port
-    ; iPutStrLn hdl "lookup all"
-    ; iPutStrLn hdl "app::type"
-    ; iFlush hdl
-    ; apps <- ibGetContents hdl
-    ; forM_ (BS.lines apps) tryAddApp
+    ; lPutStrLn hdl "lookup all"
+    ; lPutStrLn hdl "app::type"
+    ; lFlush hdl
+    ; apps <- lGetLines hdl
+    ; lClose hdl
+    ; forM_ apps tryAddApp
     } `catchError` reportError
     where
-        tryAddApp :: ByteString -> ManagerMonadStack ()
-        tryAddApp app' = do
-            let app = BS.unpack app'
+        tryAddApp :: LBS.ByteString -> ManagerMonadStack ()
+        tryAddApp app = do
             apps <- getApps
             when (not (Set.member app apps)) $ do
                 addApp app
                 fork $ (runAppManager app) `finally` do
-                    { iPutStrLn stderr $ "App manager exited: " ++ app
+                    { iPrintLog $ "App manager exited: " ++ (LBS.unpack app)
                     ; removeApp app
                     }
                 return ()
@@ -76,16 +77,15 @@ updateLoad = do
     { load <- iReadProcess "Saffron/Load.py" []
     ; (host, port, _) <- get
     ; hdl <- iConnectTo host port
-    ; iPutStrLn hdl "set"
-    ; iPutStrLn hdl $ concat ["host::load::", Config.host]
-    ; iPutStrLn hdl load
-    ; iFlush hdl
-    ; iClose hdl
+    ; lPutStrLn hdl "set"
+    ; lPutStrLn hdl $ LBS.concat ["host::load::", LBS.pack Config.host]
+    ; lPutStrLn hdl $ LBS.pack load
+    ; lClose hdl
     }
 
 -----
 
-getApps :: ManagerMonadStack (Set String)
+getApps :: ManagerMonadStack (Set LBS.ByteString)
 getApps = do
     (_, _, mv) <- get
     apps <- readMVar mv
@@ -93,7 +93,7 @@ getApps = do
 
 -----
 
-addApp :: String -> ManagerMonadStack ()
+addApp :: LBS.ByteString -> ManagerMonadStack ()
 addApp app = do
     (_, _, mv) <- get
     apps <- takeMVar mv
@@ -101,7 +101,7 @@ addApp app = do
 
 -----
 
-removeApp :: String -> ManagerMonadStack ()
+removeApp :: LBS.ByteString -> ManagerMonadStack ()
 removeApp app = do
     (_, _, mv) <- get
     apps <- takeMVar mv

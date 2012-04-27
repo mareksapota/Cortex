@@ -1,19 +1,18 @@
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE ScopedTypeVariables, OverloadedStrings #-}
 
 module Cortex.G23.Alive (runAlive) where
 
 import Control.Concurrent.Lifted (fork, threadDelay)
-import System.IO (stderr)
-import Control.Monad (liftM, forM_, when)
+import Control.Monad (forM_, when)
 import Control.Monad.State (evalStateT, get)
 import Control.Monad.Error (catchError, throwError)
-import Data.ByteString.Lazy.Char8 (ByteString)
-import qualified Data.ByteString.Lazy.Char8 as BS
+import qualified Data.ByteString.Lazy.Char8 as LBS
 import Data.Maybe (isNothing, fromJust)
 
 import Cortex.G23.GrandMonadStack
 import qualified Cortex.G23.Config as Config
-import Cortex.Common.ErrorIO
+import Cortex.Common.ErrorIO (iConnectTo, iPrintLog)
+import Cortex.Common.LazyIO
 import Cortex.Common.Error
 import Cortex.Common.Event
 import Cortex.Common.MaybeRead
@@ -34,24 +33,26 @@ aliveCheck :: GrandMonadStack ()
 aliveCheck = do
     { (host, port) <- get
     ; hdl <- iConnectTo host port
-    ; iPutStrLn hdl "lookup all"
-    ; iPutStrLn hdl "app::instance"
-    ; iFlush hdl
-    ; instances <- (liftM BS.lines) $ ibGetContents hdl
+    ; lPutStrLn hdl "lookup all"
+    ; lPutStrLn hdl "app::instance"
+    ; lFlush hdl
+    ; instances <- lGetLines hdl
+    ; lClose hdl
     ; forM_ instances (\i -> fork $ checkInstance i)
     } `catchError` reportError
 
 -----
 
-checkInstance :: ByteString -> GrandMonadStack ()
+checkInstance :: LBS.ByteString -> GrandMonadStack ()
 checkInstance i = do
-    -- Remove the 'app::' prefix.
-    { let hp = BS.unpack (BS.drop 2 $ BS.dropWhile (/= ':') i)
-    ; let host = takeWhile (/= ':') hp
-    ; let (port' :: Maybe Int) = maybeRead $ tail $ dropWhile (/= ':') hp
+    -- Remove the 'appName::' prefix.
+    { let hp = LBS.drop 2 $ LBS.dropWhile (/= ':') i
+    ; let host = LBS.unpack $ LBS.takeWhile (/= ':') hp
+    ; let (port' :: Maybe Int) = maybeRead $ LBS.unpack $ LBS.tail $
+            LBS.dropWhile (/= ':') hp
     ; when (isNothing port') $ throwError "Malformed host:port line"
     ; let port = fromJust port'
-    ; catchError (connect host port) (\_ -> remove $ BS.unpack i)
+    ; catchError (connect host port) (\_ -> remove i)
     } `catchError` reportError
 
 -----
@@ -61,36 +62,36 @@ connect host port = do
     -- Try not to kill new instances that aren't properly up yet.
     { threadDelay $ round $ (10 ** 6) * Config.connectionSleep
     ; hdl <- iConnectTo host port
-    ; iClose hdl
+    ; lClose hdl
     }
 
 -----
 
-remove :: String -> GrandMonadStack ()
+remove :: LBS.ByteString -> GrandMonadStack ()
 remove i = do
-    { let key = "app::instance::" ++ i
+    { let key = LBS.concat ["app::instance::", i]
     ; (host, port) <- get
     -- Do a lookup first, we don't want to notify the user if the instance is
     -- already dead, for example killed by another G23 thread.
     ; hdl <- iConnectTo host port
-    ; iPutStrLn hdl "lookup"
-    ; iPutStrLn hdl key
-    ; iFlush hdl
-    ; response <- iGetLine hdl
-    ; iClose hdl
+    ; lPutStrLn hdl "lookup"
+    ; lPutStrLn hdl key
+    ; lFlush hdl
+    ; response <- lGetLine hdl
+    ; lClose hdl
     -- Don't issue a delete if we don't have to.
     ; when (response /= "Nothing") $ remove' key
     }
 
-remove' :: String -> GrandMonadStack ()
+remove' :: LBS.ByteString -> GrandMonadStack ()
 remove' key = do
     { (host, port) <- get
     ; hdl <- iConnectTo host port
-    ; iPutStrLn hdl "delete"
-    ; iPutStrLn hdl key
-    ; iFlush hdl
-    ; iClose hdl
-    ; iPutStrLn stderr $ "Detected a dead instance: " ++ key
+    ; lPutStrLn hdl "delete"
+    ; lPutStrLn hdl key
+    ; lFlush hdl
+    ; lClose hdl
+    ; iPrintLog $ "Detected a dead instance: " ++ (LBS.unpack key)
     }
 
 -----

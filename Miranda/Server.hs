@@ -1,4 +1,4 @@
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE ScopedTypeVariables, OverloadedStrings #-}
 
 module Cortex.Miranda.Server
     ( runServer
@@ -8,22 +8,18 @@ module Cortex.Miranda.Server
 
 import Prelude hiding (getLine)
 import Network
-import System.IO
-    ( stderr
-    , Handle
-    , BufferMode (BlockBuffering)
-    , IOMode (ReadMode, WriteMode, AppendMode)
-    )
+import System.IO (IOMode (ReadMode, WriteMode))
 import System.Cmd (rawSystem)
 import Control.Monad.State
 import Control.Monad.Error
 import Control.Concurrent.Lifted
 import Data.Maybe (fromMaybe, fromJust, isNothing)
-import Data.ByteString.Lazy.Char8 (ByteString)
-import qualified Data.ByteString.Lazy.Char8 as BS
+import qualified Data.ByteString.Lazy.Char8 as LBS
+import qualified Data.ByteString.Char8 as BS
 import System.Random (randomIO)
 
-import Cortex.Common.ErrorIO
+import Cortex.Common.ErrorIO (iListenOn, iAccept, iPrintLog, iConnectTo)
+import Cortex.Common.LazyIO
 import Cortex.Common.Event
 import Cortex.Common.Error
 import Cortex.Common.MaybeRead
@@ -33,12 +29,13 @@ import qualified Cortex.Miranda.Commit as C
 import qualified Cortex.Miranda.Storage as S
 import qualified Cortex.Common.Random as Random
 import Cortex.Miranda.GrandMonadStack
+import Cortex.Common.ByteString
 
 import qualified Cortex.Miranda.Config as Config
 
 -----
 
-type ConnectedMonadStack = StateT (Handle, String, Int) GrandMonadStack
+type ConnectedMonadStack = StateT (LazyHandle, String, Int) GrandMonadStack
 
 -----
 
@@ -55,7 +52,7 @@ runServer serverPort = do
         acceptConnection :: Socket -> GrandMonadStack ()
         acceptConnection socket = do
             (hdl, host, port) <- iAccept socket
-            fork $ evalStateT handleConnection (hdl, host, read $ show port)
+            fork $ evalStateT handleConnection (hdl, host, port)
             -- Ignore result of fork and return proper type.
             return ()
 
@@ -64,98 +61,90 @@ runServer serverPort = do
 -- `fork` discards errors, so `reportError` from `runServer` won't report them,
 -- they have to be caught here.
 handleConnection :: ConnectedMonadStack ()
-handleConnection = catchError handleConnection' reportError
-
-handleConnection' :: ConnectedMonadStack ()
-handleConnection' = do
-    (hdl, _, _) <- get
-    iSetBuffering hdl (BlockBuffering $ Just 32)
-    getLine >>= chooseConnectionMode
+handleConnection = catchError (getLine >>= chooseConnectionMode) reportError
 
 -----
 
-chooseConnectionMode :: String -> ConnectedMonadStack ()
+chooseConnectionMode :: LBS.ByteString -> ConnectedMonadStack ()
 
 chooseConnectionMode "set" = do
     key <- getLine
-    rest <- getRest
-    let value = BS.takeWhile (/= '\n') rest
-    printLog $ "set: " ++ key
+    printLog $ "set: " ++ (LBS.unpack key)
+    value <- getLine
+    closeConnection
     lift $ S.set key value
 
 chooseConnectionMode "lookup" = do
     key <- getLine
-    printLog $ "lookup: " ++ key
+    printLog $ "lookup: " ++ (LBS.unpack key)
     value <- lift $ S.lookup key
     if (isNothing value)
         then putLine "Nothing"
         else do
             writePart "Just "
-            putbLine (fromJust value)
+            putLine (fromJust value)
     closeConnection
 
 chooseConnectionMode "lookup all" = do
     key <- getLine
-    printLog $ "lookup all: " ++ key
+    printLog $ "lookup all: " ++ (LBS.unpack key)
     kv <- lift $ S.lookupAll key
     let keys = fst $ unzip kv
-    forM_ keys putLine
+    forM_ keys putSLine
     closeConnection
 
 chooseConnectionMode "lookup all with value" = do
     key <- getLine
-    printLog $ "lookup all with value: " ++ key
+    printLog $ "lookup all with value: " ++ (LBS.unpack key)
     kv <- lift $ S.lookupAll key
     forM_ kv $ \(k, v) -> do
-        { putLine k
-        ; putbLine v
+        { putSLine k
+        ; putLine v
         }
     closeConnection
 
 chooseConnectionMode "lookup hash" = do
     key <- getLine
-    printLog $ "lookup hash: " ++ key
+    printLog $ "lookup hash: " ++ (LBS.unpack key)
     hash <- lift $ S.lookupHash key
     if (isNothing hash)
         then putLine "Nothing"
         else do
             writePart "Just "
-            putLine (fromJust hash)
+            putSLine $ fromJust hash
     closeConnection
 
 chooseConnectionMode "delete" = do
     key <- getLine
-    printLog $ "delete: " ++ key
-    lift $ S.delete key
+    printLog $ "delete: " ++ (LBS.unpack key)
     closeConnection
+    lift $ S.delete key
 
 chooseConnectionMode "sync" = do
     printLog "Sync request"
     host <- getLine
     -- If remote host was assumed offline, client side synchronisation will not
     -- mark it online.
-    let key = "host::availability::" ++ host
+    let key = LBS.append "host::availability::" host
     remote <- lift $ S.lookup key
-    let boff = BS.pack "offline"
-    when (boff == fromMaybe boff remote) $ do
-        lift $ S.set key (BS.pack "online")
-        printLog $ concat ["Marked ", host, " online"]
+    when ("offline" == fromMaybe "offline" remote) $ do
+        lift $ S.set key "online"
+        printLog $ concat ["Marked ", LBS.unpack host, " online"]
     -- If the remote performed a squash more recently, do it too.
-    remoteSTime <- getLine
+    remoteSTime <- liftM LBS.unpack $ getLine
     localSTime <- lift S.getSquashTime
     when (localSTime < remoteSTime) $ lift $ do
         { printLocalLog "Local squash out of sync"
         ; performSquash
         ; S.setSquashTime remoteSTime
         }
-    rest <- getRest
     -- If local squash is more recent, silently abandon the sync.
     if (localSTime > remoteSTime)
         then do
             { printLog "Remote squash out of sync, abandoning"
-            ; phonyClientSync (BS.lines rest)
+            ; phonyClientSync
             }
-        else clientSync (BS.lines rest) 0
+        else clientSync 0
     printLog "Sync request done"
 
 chooseConnectionMode _ = throwError "Unknown connection mode"
@@ -163,46 +152,46 @@ chooseConnectionMode _ = throwError "Unknown connection mode"
 -----
 
 -- Pretend we are up to date.
-phonyClientSync :: [ByteString] -> ConnectedMonadStack ()
-phonyClientSync [] = throwError "Expected more lines"
-phonyClientSync (_:_) = putLine "yes"
+phonyClientSync :: ConnectedMonadStack ()
+phonyClientSync = do
+    -- Get a hash.
+    getLine
+    putLine "yes"
 
 -- Answer questions about present commits.
-clientSync :: [ByteString] -> Int -> ConnectedMonadStack ()
-clientSync [] _ = throwError "Expected more lines"
-clientSync (h:t) n = do
-    let hash = BS.unpack h
+clientSync :: Int -> ConnectedMonadStack ()
+clientSync n = do
+    hash <- getLine
     member <- lift $ S.member hash
     if member || (hash == "done")
         then do
             putLine "yes"
-            clientSync' t n
+            clientSync' n
         else do
             putLine "no"
-            clientSync t (n + 1)
+            clientSync $ n + 1
 
 -- Collect remote commits.
-clientSync' :: [ByteString] -> Int -> ConnectedMonadStack ()
-clientSync' _ 0 = return ()
-clientSync' [] _ = throwError "Expected more lines"
-clientSync' (h:t) n = do
-    c <- lift $ C.fromString h
+clientSync' :: Int -> ConnectedMonadStack ()
+clientSync' 0 = return ()
+clientSync' n = do
+    line <- getLine
+    c <- lift $ C.fromString line
     lift $ S.insert c
-    clientSync' t (n - 1)
+    clientSync' $ n - 1
 
 -----
 
 sync :: Int -> GrandMonadStack ()
 sync port = do
-    let selfHost = concat [Config.host, ":", show port]
-    let key = "host::availability::" ++ selfHost
-    self <- id $ S.lookup key
-    let boff = BS.pack "offline"
-    when (boff == fromMaybe boff self) (S.set key (BS.pack "online"))
+    let selfHost = LBS.pack $ concat [Config.host, ":", show port]
+    let key = LBS.concat ["host::availability::", selfHost]
+    self <- S.lookup key
+    when ("offline" == fromMaybe "offline" self) (S.set key "online")
     hosts' <- S.lookupAllWhere "host::availability"
         (\k v ->
-            k /= concat [Config.host, ":", show port] &&
-            v == (BS.pack "online"))
+            toLazyBS k /= selfHost &&
+            v == "online")
     let hosts = fst $ unzip hosts'
     r <- Random.generate (0, (length hosts) - 1) Config.syncServers
     let syncHosts = map (\i -> hosts !! i) r
@@ -216,35 +205,37 @@ sync port = do
             S.updateSquashTime
     forM_ syncHosts (performSync selfHost)
 
-performSync :: String -> String -> GrandMonadStack ()
+performSync :: LBS.ByteString -> BS.ByteString -> GrandMonadStack ()
 performSync selfHost hostString = do
-    printLocalLog $ "Synchronising with " ++ hostString
-    let host = takeWhile (/= ':') hostString
-    let (port' :: Maybe Int) = maybeRead $ tail $ dropWhile (/= ':') hostString
+    printLocalLog $ "Synchronising with " ++ (BS.unpack hostString)
+    let host = BS.unpack $ BS.takeWhile (/= ':') hostString
+    let (port' :: Maybe Int) = maybeRead $ BS.unpack $ BS.tail $
+            BS.dropWhile (/= ':') hostString
     when (isNothing port') $ throwError "Malformed host:port line"
     let port = fromJust port'
     do
         { hdl <- iConnectTo host port
         ; evalStateT (performSync' selfHost) (hdl, host, port)
         } `catchError` reportSyncError
-    printLocalLog $ "Synchronisation with " ++ hostString ++ " done"
+    printLocalLog $ "Synchronisation with " ++ (BS.unpack hostString) ++ " done"
     where
         reportSyncError :: String -> GrandMonadStack ()
         reportSyncError e = do
             printLocalLog $ "Error: " ++ e
-            printLocalLog $ concat ["Marking ", hostString, " offline"]
-            S.set ("host::availability::" ++ hostString) (BS.pack "offline")
+            printLocalLog $ concat ["Marking ", BS.unpack hostString, " offline"]
+            let key = LBS.concat ["host::availability::", toLazyBS hostString]
+            S.set key "offline"
 
 -- Commits are first collected, then transmitted so they can be sent in oldest
 -- to newest order.  This means they can be applied on the other side without
 -- any unnecessary rebasing.
-performSync' :: String -> ConnectedMonadStack ()
+performSync' :: LBS.ByteString -> ConnectedMonadStack ()
 performSync' selfHost = do
     putLine "sync"
     putLine selfHost
     -- Send local squash time.
     localSTime <- lift S.getSquashTime
-    putLine localSTime
+    putLine $ LBS.pack localSTime
     -- Transmit commits to the remote.
     commits <- lift S.getCommits
     toTransmit <- performSync'' commits []
@@ -259,7 +250,7 @@ performSync'' [] t = do
     return t
 
 performSync'' (c:commits) t = do
-    putLine $ C.getHash c
+    putSLine $ C.getHash c
     l <- getLine
     if (l == "no")
         then performSync'' commits (c:t)
@@ -269,7 +260,7 @@ performSync''' :: [Commit] -> ConnectedMonadStack ()
 performSync''' [] = putLine "done"
 performSync''' (h:t) = do
     cs <- lift $ C.toString h
-    putbLine cs
+    putLine cs
     performSync''' t
 
 -----
@@ -279,8 +270,9 @@ readValueStorage = do
     { storage <- get
     ; let location = concat [storage, "/data"]
     ; printLocalLog $ "Reading storage from " ++ location
-    ; hdl <- iOpen location ReadMode
-    ; vs <- ibGetContents hdl
+    ; hdl <- lOpenFile location ReadMode
+    ; vs <- lGetContents hdl
+    ; lClose hdl
     ; S.read vs
     ; printLocalLog $ "Storage was successfully read"
     } `catchError` reportStorageError
@@ -296,14 +288,10 @@ saveValueStorage = do
     { storage <- get
     ; let location = concat [storage, "/data"]
     ; let tmp = location ++ ".tmp"
-    ; hdl <- iOpen tmp WriteMode
+    ; hdl <- lOpenFile tmp WriteMode
     ; vs <- S.show
-    ; ibPutStr hdl vs
-    ; iClose hdl
-    -- Lazy IO hack.  Make sure value is on disc before exiting.
-    ; hdl' <- iOpen tmp AppendMode
-    ; iClose hdl'
-    -- End of lazy IO hack.
+    ; lPutStr hdl vs
+    ; lClose hdl
     ; liftIO $ rawSystem "mv" [tmp, location]
     ; printLocalLog $ "Saved storage to " ++ location
     } `catchError` reportStorageError
@@ -321,41 +309,30 @@ performSquash = do
 
 -----
 
-getLine :: ConnectedMonadStack String
+getLine :: ConnectedMonadStack LBS.ByteString
 getLine = do
     (hdl, _, _) <- get
-    iGetLine hdl
-
------
--- This will close the handle after it's done.
-
-getRest :: ConnectedMonadStack ByteString
-getRest = do
-    (hdl, _, _) <- get
-    ibGetContents hdl
+    lGetLine hdl
 
 -----
 
-putLine :: String -> ConnectedMonadStack ()
+putLine :: LBS.ByteString -> ConnectedMonadStack ()
 putLine s = do
     (hdl, _, _) <- get
-    iPutStrLn hdl s
-    iFlush hdl
+    lPutStrLn hdl s
+    lFlush hdl
 
 -----
 
-writePart :: String -> ConnectedMonadStack ()
+putSLine :: BS.ByteString -> ConnectedMonadStack ()
+putSLine = putLine . toLazyBS
+
+-----
+
+writePart :: LBS.ByteString -> ConnectedMonadStack ()
 writePart s = do
     (hdl, _, _) <- get
-    iPutStr hdl s
-
------
-
-putbLine :: ByteString -> ConnectedMonadStack ()
-putbLine s = do
-    (hdl, _, _) <- get
-    ibPutStrLn hdl s
-    iFlush hdl
+    lPutStr hdl s
 
 -----
 
@@ -369,7 +346,7 @@ getHost = do
 closeConnection :: ConnectedMonadStack ()
 closeConnection = do
     (hdl, _, _) <- get
-    iClose hdl
+    lClose hdl
 
 -----
 
@@ -378,8 +355,7 @@ printLog msg
     | Config.writeLog = do
         timeString <- getDefaultTimestamp
         host <- getHost
-        iPutStrLn stderr $ concat [timeString, " -- ", host, " -- ", msg]
-        iFlush stderr
+        iPrintLog $ concat [timeString, " -- ", host, " -- ", msg]
     | otherwise = return ()
 
 -----
@@ -388,8 +364,7 @@ printLocalLog :: String -> GrandMonadStack ()
 printLocalLog msg
     | Config.writeLog = do
         timeString <- getDefaultTimestamp
-        iPutStrLn stderr $ concat [timeString, " -- ", msg]
-        iFlush stderr
+        iPrintLog $ concat [timeString, " -- ", msg]
     | otherwise = return ()
 
 -----

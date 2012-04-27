@@ -1,6 +1,7 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 import Prelude hiding (lookup)
 import Test.HUnit
-import Data.ByteString.Lazy.Char8
 
 import Cortex.Common.Testing
 import Cortex.Miranda.CommitRaw
@@ -92,14 +93,14 @@ test11 = TestCase $ do
 
 test12 :: Test
 test12 = runInIOStateError $ do
-    a <- set "ala" (pack "makota")
+    a <- set "ala" "makota"
     b <- toString a
     c <- fromString b
     return $ assertBool "" $ (==) a c
 
 test13 :: Test
 test13 = runInIOStateError $ do
-    a <- set "ala" (pack "makota")
+    a <- set "ala" "makota"
     b <- iEncode a
     c <- iDecode b
     return $ assertBool "" $ (==) a c
@@ -126,9 +127,9 @@ test16 = runInIOStateError $ do
 
 test17 :: Test
 test17 = runInIOStateError $ do
-    a <- set "ala" (pack "makota")
+    a <- set "ala" "makota"
     b <- getValue a
-    return $ assertBool "" $ (==) b (pack "makota")
+    return $ assertBool "" $ (==) b "makota"
 
 test18 :: Test
 test18 = runFailInIOStateError $ do

@@ -1,6 +1,7 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 import Prelude hiding (lookup)
 import Test.HUnit
-import Data.ByteString.Lazy.Char8 (pack)
 
 import Cortex.Common.Testing
 import Cortex.Miranda.ValueTree
@@ -55,61 +56,61 @@ test4 = runInIOStateError $ do
 
 test5 :: Test
 test5 = runInIOStateError $ do
-    a <- C.set "a" (pack "b")
+    a <- C.set "a" "b"
     v <- lookup "a" $ insert "a::b" a empty
     return $ assertBool "" $ (==) Nothing v
 
 test6 :: Test
 test6 = runInIOStateError $ do
-    a <- C.set "a" (pack "b")
+    a <- C.set "a" "b"
     v <- lookup "a::b::c" $ insert "a::b" a empty
     return $ assertBool "" $ (==) Nothing v
 
 test7 :: Test
 test7 = runInIOStateError $ do
-    a <- C.set "a" (pack "b")
+    a <- C.set "a" "b"
     v <- lookup "a::b" $ insert "a::b" a empty
-    return $ assertBool "" $ (==) (Just (pack "b")) v
+    return $ assertBool "" $ (==) (Just "b") v
 
 test8 :: Test
 test8 = runInIOStateError $ do
-    a <- C.set "a" (pack "b")
-    b <- C.set "b" (pack "c")
+    a <- C.set "a" "b"
+    b <- C.set "b" "c"
     v <- lookup "a:b" $ insert "a::b" a $ insert "a:b" b empty
-    return $ assertBool "" $ (==) (Just (pack "c")) v
+    return $ assertBool "" $ (==) (Just "c") v
 
 test9 :: Test
 test9 = runInIOStateError $ do
-    a <- C.set "a" (pack "b")
-    b <- C.set "b" (pack "c")
+    a <- C.set "a" "b"
+    b <- C.set "b" "c"
     v <- lookupAll "x" $ insert "x::a:b" a $ insert "a::b" b empty
-    return $ assertBool "" $ (==) [("a:b", (pack "b"))] v
+    return $ assertBool "" $ (==) [("a:b", "b")] v
 
 test10 :: Test
 test10 = runInIOStateError $ do
-    a <- C.set "a" (pack "b")
+    a <- C.set "a" "b"
     v <- lookup "" $ insert "" a empty
-    return $ assertBool "" $ (==) (Just (pack "b")) v
+    return $ assertBool "" $ (==) (Just "b") v
 
 test11 :: Test
 test11 = runInIOStateError $ do
-    a <- C.set "a" (pack "b")
-    b <- C.set "b" (pack "c")
-    v <- lookupAllWhere "x" (\_ v -> v == (pack "b")) $
+    a <- C.set "a" "b"
+    b <- C.set "b" "c"
+    v <- lookupAllWhere "x" (\_ v -> v == "b") $
         insert "x::a:b" a $ insert "x::b" b empty
-    return $ assertBool "" $ (==) [("a:b", (pack "b"))] v
+    return $ assertBool "" $ (==) [("a:b", "b")] v
 
 test12 :: Test
 test12 = runInIOStateError $ do
-    a <- C.set "a" (pack "b")
-    b <- C.set "b" (pack "c")
+    a <- C.set "a" "b"
+    b <- C.set "b" "c"
     v <- lookupAllWhere "x" (\k _ -> k == "a:b") $
         insert "x::a:b" a $ insert "x::b" b empty
-    return $ assertBool "" $ (==) [("a:b", (pack "b"))] v
+    return $ assertBool "" $ (==) [("a:b", "b")] v
 
 test13 :: Test
 test13 = runInIOStateError $ do
-    a <- C.set "a" (pack "b")
+    a <- C.set "a" "b"
     v <- lookupHash "a" $ insert "a" a empty
     return $ assertBool "" $ (==)
         (Just "e9d71f5ee7c92d6dc9e92ffdad17b8bd49418f98")
@@ -117,8 +118,8 @@ test13 = runInIOStateError $ do
 
 test14 :: Test
 test14 = runInIOStateError $ do
-    a <- C.set "ala::ma" (pack "kota")
-    b <- C.set "host::is" (pack "online")
+    a <- C.set "ala::ma" "kota"
+    b <- C.set "host::is" "online"
     c <- C.delete "ala::ma"
     let vt = apply c $ apply b $ apply a $ empty
     v <- lookupAll "" vt
@@ -131,8 +132,8 @@ test14 = runInIOStateError $ do
 
 test15 :: Test
 test15 = runInIOStateError $ do
-    a <- C.set "a" (pack "a")
-    b <- C.set "b" (pack "b")
+    a <- C.set "a" "a"
+    b <- C.set "b" "b"
     c <- C.delete "b"
     return $ assertBool "" $ (==)
         (insert "a" a empty)

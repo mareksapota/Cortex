@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 import Test.HUnit
 
 import qualified Cortex.Miranda.CommitRaw as C

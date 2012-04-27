@@ -23,15 +23,16 @@ import Prelude hiding (lookup)
 import Control.Monad.State
 import Control.Monad.Error (throwError, catchError)
 import Control.Concurrent.Lifted
-import Data.ByteString.Lazy.Char8 (ByteString)
+import qualified Data.ByteString.Lazy.Char8 as LBS
+import qualified Data.ByteString.Char8 as BS
 
 import Cortex.Miranda.ValueStorage (ValueStorage)
 import qualified Cortex.Miranda.ValueStorage as VS
 import Cortex.Miranda.Commit (Commit)
-import qualified Cortex.Miranda.Commit as Commit
 import Cortex.Miranda.GrandMonadStack
 import Cortex.Common.ErrorIO
 import Cortex.Common.Time
+import Cortex.Common.ByteString
 
 -----
 -- WARNING
@@ -81,44 +82,50 @@ putBack vs e = do
 
 -----
 
-set ::  String -> ByteString -> GrandMonadStack ()
-set key value = do
+set ::  LBS.ByteString -> LBS.ByteString -> GrandMonadStack ()
+set key' value = do
+    let key = toStrictBS key'
     vs <- getVS
     (VS.set key value vs >>= putVS) `catchError` (putBack vs)
 
 -----
 
-delete :: String -> GrandMonadStack ()
-delete key = do
+delete :: LBS.ByteString -> GrandMonadStack ()
+delete key' = do
+    let key = toStrictBS key'
     vs <- getVS
     (VS.delete key vs >>= putVS) `catchError` (putBack vs)
 
 -----
 
-lookup :: String -> GrandMonadStack (Maybe ByteString)
-lookup key = do
+lookup :: LBS.ByteString -> GrandMonadStack (Maybe LBS.ByteString)
+lookup key' = do
+    let key = toStrictBS key'
     vs <- readVS
     VS.lookup key vs
 
 -----
 
-lookupHash :: String -> GrandMonadStack (Maybe String)
-lookupHash key = do
+lookupHash :: LBS.ByteString -> GrandMonadStack (Maybe BS.ByteString)
+lookupHash key' = do
+    let key = toStrictBS key'
     vs <- readVS
     VS.lookupHash key vs
 
 -----
 
-lookupAll :: String -> GrandMonadStack [(String, ByteString)]
-lookupAll key = do
+lookupAll :: LBS.ByteString -> GrandMonadStack [(BS.ByteString, LBS.ByteString)]
+lookupAll key' = do
+    let key = toStrictBS key'
     vs <- readVS
     VS.lookupAll key vs
 
 -----
 
-lookupAllWhere :: String -> (String -> ByteString -> Bool) ->
-    GrandMonadStack [(String, ByteString)]
-lookupAllWhere key f = do
+lookupAllWhere :: LBS.ByteString -> (BS.ByteString -> LBS.ByteString -> Bool) ->
+    GrandMonadStack [(BS.ByteString, LBS.ByteString)]
+lookupAllWhere key' f = do
+    let key = toStrictBS key'
     vs <- readVS
     VS.lookupAllWhere key f vs
 
@@ -131,8 +138,9 @@ insert c = do
 
 -----
 
-member :: Commit.Hash -> GrandMonadStack Bool
-member hash = do
+member :: LBS.ByteString -> GrandMonadStack Bool
+member hash' = do
+    let hash = toStrictBS hash'
     vs <- readVS
     return $ VS.member hash vs
 
@@ -153,14 +161,14 @@ squash = do
 
 -----
 
-show :: GrandMonadStack ByteString
+show :: GrandMonadStack LBS.ByteString
 show = do
     vs <- readVS
     iEncode vs
 
 -----
 
-read :: ByteString -> GrandMonadStack ()
+read :: LBS.ByteString -> GrandMonadStack ()
 read s = do
     -- This can produce an error, make sure not to use `getVS` before this.
     vs <- iDecode s
