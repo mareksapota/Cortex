@@ -188,16 +188,15 @@ getSquashTime = do
 setSquashTime :: String -> GrandMonadStack ()
 setSquashTime time = do
     (mv, _) <- lift get
-    swapMVar mv time
-    return ()
+    oldTime <- takeMVar mv
+    -- Take the higher value.
+    putMVar mv $ max time oldTime
 
 -----
 
 updateSquashTime :: GrandMonadStack ()
 updateSquashTime = do
     time <- getBigEndianTimestamp
-    (mv, _) <- lift get
-    swapMVar mv time
-    return ()
+    setSquashTime time
 
 -----
