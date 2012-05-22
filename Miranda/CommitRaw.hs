@@ -10,7 +10,7 @@ module Cortex.Miranda.CommitRaw where
 import Control.Monad.Trans (MonadIO)
 import Control.Monad.Error (MonadError, throwError)
 import Control.Monad.State (MonadState, get)
-import System.IO (IOMode (ReadMode, WriteMode))
+import System.IO (IOMode (ReadMode))
 import qualified Data.ByteString.Lazy.Char8 as LBS
 import qualified Data.ByteString.Char8 as BS
 import Data.Binary (Binary)
