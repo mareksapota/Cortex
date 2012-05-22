@@ -109,6 +109,11 @@ set key value = do
     ts <- getBigEndianTimestamp
     let commit = Commit (key, Set hash, "", ts)
     location <- getLocation commit
+    -- Use a temprorary file.  Commits transmitted during sync might already be
+    -- present and GHC runtime isn't happy about opening a file for writing,
+    -- when somebody might already be reading it.  If someone is reading this
+    -- file, then even after `mv` the old file won't disappear, Linux will
+    -- remove the old file only after all file descriptors to it are closed.
     (tmp, hdl) <- iOpenTempFile "/tmp" "commit"
     lPutStr hdl value
     lClose hdl
