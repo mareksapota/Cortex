@@ -44,6 +44,7 @@ type EIO m a = (MonadError String m, MonadIO m) => m a
 
 lConvert :: Handle -> EIO m LazyHandle
 lConvert hdl = do
+    -- If the handle is closed this will fail sometime later.
     content <- ioReport $ LBS.hGetContents hdl
     ref <- liftIO $ newIORef content
     return $ RWHandle ref hdl
@@ -62,7 +63,8 @@ lOpenFile' path mode = do
     chooseMode mode hdl
     where
         chooseMode ReadMode hdl = do
-            content <- liftIO $ LBS.hGetContents hdl
+            -- If the handle is closed this will fail sometime later.
+            content <- ioReport $ LBS.hGetContents hdl
             ref <- liftIO $ newIORef content
             return $ ReadHandle ref
         chooseMode WriteMode hdl = return $ WriteHandle hdl
