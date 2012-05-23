@@ -77,9 +77,10 @@ lOpenFile' path mode = do
 lClose :: LazyHandle -> EIO m ()
 lClose (ReadHandle ref) = liftIO $ writeIORef ref ""
 lClose (WriteHandle hdl) = ioReport $ hClose hdl
-lClose (RWHandle ref hdl) = do
-    lClose $ ReadHandle ref
-    lClose $ WriteHandle hdl
+-- Don't actually call `hClose` on the handle, all subsequent reads will fail
+-- and since the IO is lazy reads that appear in code before `lClose` might
+-- actually happen after.
+lClose (RWHandle ref _) = lClose $ ReadHandle ref
 
 -----
 
