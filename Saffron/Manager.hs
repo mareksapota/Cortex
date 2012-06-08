@@ -33,12 +33,9 @@ runManager host port = do
 
 runManager' :: ManagerMonadStack ()
 runManager' = do
-    -- Make sure there is load info before running `updateManager`.
-    updateLoad
     periodicTimer Config.managerUpdateTime updateManager
     -- Make sure errors don't stop the timer.
-    periodicTimer Config.managerUpdateTime $
-        updateLoad `catchError` (\_ -> return ())
+    periodicTimer Config.managerUpdateTime $ ignoreError updateLoad
     eventLoop
 
 -----
