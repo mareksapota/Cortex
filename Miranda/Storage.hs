@@ -75,26 +75,27 @@ readVS = do
 -----
 -- Put value storage back in case of an error.
 
-putBack :: ValueStorage -> String -> GrandMonadStack ()
-putBack vs e = do
-    putVS vs
-    throwError e
+putBack :: (ValueStorage -> GrandMonadStack ValueStorage) -> GrandMonadStack ()
+putBack action = do
+    vs <- getVS
+    (action vs >>= putVS) `catchError` (\e -> do
+        { putVS vs
+        ; throwError e
+        })
 
 -----
 
 set ::  LBS.ByteString -> LBS.ByteString -> GrandMonadStack ()
 set key' value = do
     let key = toStrictBS key'
-    vs <- getVS
-    (VS.set key value vs >>= putVS) `catchError` (putBack vs)
+    putBack $ VS.set key value
 
 -----
 
 delete :: LBS.ByteString -> GrandMonadStack ()
 delete key' = do
     let key = toStrictBS key'
-    vs <- getVS
-    (VS.delete key vs >>= putVS) `catchError` (putBack vs)
+    putBack $ VS.delete key
 
 -----
 
