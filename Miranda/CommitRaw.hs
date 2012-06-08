@@ -123,7 +123,7 @@ set key value = do
 -----
 -- Create a new delete type commit.
 
-delete :: (MonadIO m) => BS.ByteString -> m Commit
+delete :: (MonadIO m, MonadError String m) => BS.ByteString -> m Commit
 delete key = do
     ts <- getBigEndianTimestamp
     return $ Commit (key, Delete, "", ts)

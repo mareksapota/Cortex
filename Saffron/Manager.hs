@@ -18,6 +18,7 @@ import Cortex.Common.Event
 import Cortex.Common.ErrorIO (iPrintLog, iConnectTo, iReadProcess)
 import Cortex.Common.LazyIO
 import Cortex.Common.Error
+import Cortex.Common.Time
 import Cortex.Saffron.GrandMonadStack
 import qualified Cortex.Saffron.Config as Config
 import Cortex.Saffron.AppManager (runAppManager)
@@ -72,10 +73,14 @@ updateManager = do
 updateLoad :: ManagerMonadStack ()
 updateLoad = do
     { load <- iReadProcess "Saffron/Load.py" []
+    ; time <- getEpochTime
     ; (host, port, _) <- get
     ; hdl <- iConnectTo host port
     ; lPutStrLn hdl "set"
-    ; lPutStrLn hdl $ LBS.concat ["host::load::", LBS.pack Config.host]
+    ; lPutStr hdl "host::load::"
+    ; lPutStrLn hdl $ LBS.pack Config.host
+    ; lPutStr hdl $ LBS.pack $ show time
+    ; lPutStr hdl ":"
     ; lPutStrLn hdl $ LBS.pack load
     ; lClose hdl
     }

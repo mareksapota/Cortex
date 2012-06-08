@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts, OverloadedStrings, ScopedTypeVariables #-}
 
 module Cortex.Saffron.AppManager
     ( runAppManager
@@ -9,7 +9,7 @@ module Cortex.Saffron.AppManager
 import Control.Monad.Base (MonadBase)
 import Control.Monad.State (get, evalStateT)
 import Control.Monad.Error (throwError, catchError)
-import Control.Monad (forM_, forM, when, liftM)
+import Control.Monad (forM_, when, liftM)
 import Control.Monad.Trans (lift, liftIO)
 import Control.Concurrent.Lifted hiding (killThread)
 import qualified Data.ByteString.Lazy.Char8 as LBS
@@ -17,7 +17,7 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import System.IO.Temp (createTempDirectory)
 import Data.Maybe (catMaybes, fromJust, isNothing, isJust)
-import System.Random (randomRIO)
+import System.Random (randomRIO, randomIO)
 
 import Cortex.Saffron.GrandMonadStack
 import Cortex.Common.ErrorIO (iPrintLog, iConnectTo, iRawSystem, iReadProcess)
@@ -25,6 +25,7 @@ import Cortex.Common.LazyIO
 import Cortex.Common.Error
 import Cortex.Common.Event
 import Cortex.Common.MaybeRead
+import Cortex.Common.Time
 import qualified Cortex.Saffron.Config as Config
 
 import qualified Cortex.Saffron.Apps.Static as AppStatic
@@ -47,9 +48,13 @@ knownAppTypes = Map.fromList
 runAppManager :: LBS.ByteString -> ManagerMonadStack ()
 runAppManager app = do
     (host, port, _) <- get
+    -- Application threads.
     a <- newMVar []
+    -- Application type.
     b <- newMVar ""
+    -- Source hash.
     c <- newMVar ""
+    -- Storage location.
     d <- newMVar Nothing
     mv <- newMVar (a, b, c, d)
     lift $ evalStateT runAppManager' (host, port, app, mv)
@@ -75,8 +80,9 @@ runAppManager' = do
     } `catchError` reportError
 
 -----
--- WARNING: Make sure that timers leave consistent state even if some operation
--- throws errors.  Dirty state is also a consistent state.
+-- WARNING: Make sure that timers leave consistent state (matching the real
+-- situation) even if some operation throws errors.  Dirty state is also a
+-- consistent state.
 
 addTimer :: MVar () -> Double ->
     (AppManagerState -> AppManagerMonadStack ()) ->
@@ -87,12 +93,14 @@ addTimer lock t s = periodicTimer t $ do
     (a, b, c, d) <- takeMVar mv
     isDirty <- dirty a b c d
     if isDirty
-        then putMVar mv (a, b, c, d)
+        then do
+            -- Return `mv` so if another timer fires it won't block on `takeMVar
+            -- mv`.
+            putMVar mv (a, b, c, d)
+            tryPutMVar lock () >> return ()
         else do
+            -- Only panic on serious errors resulting in dirty state.
             (s (a, b, c, d)) `catchError` reportError
-            -- Only panic on serious errors.
-            isDirty' <- dirty a b c d
-            when (isDirty') $ tryPutMVar lock () >> return ()
             putMVar mv (a, b, c, d)
     where
         dirty :: MonadBase IO m => MVar a -> MVar b -> MVar c -> MVar d ->
@@ -108,15 +116,20 @@ addTimer lock t s = periodicTimer t $ do
 
 checkSource :: AppManagerState -> AppManagerMonadStack ()
 checkSource (threads, appType, sourceHash, location) = do
-    { newAppType <- getProperty "type"
+    -- If type property was removed, this application manager should exit.  This
+    -- will happen if we leave dirty state.
+    { appType' <- takeMVar appType
+    ; newAppType <- getProperty "type"
+    -- Put it back so no source won't cause dirty state.
+    ; putMVar appType appType'
     ; newSourceHash <- getPropertyHash "source"
-    ; appType' <- readMVar appType
     ; sourceHash' <- readMVar sourceHash
     ; when ((appType' /= newAppType) || (sourceHash' /= newSourceHash)) $ do
         { (host, port, app, _) <- get
         ; iPrintLog $ "Reloading app manager: " ++ (LBS.unpack app)
         ; killAllThreads threads
         ; removeLocation location
+        -- State is clean, this will not cause us to exit.
         ; when (not $ Map.member newAppType knownAppTypes) $
             throwError $ "Unsupported app type: " ++ (LBS.unpack newAppType)
         ; newLocation <- makeNewLocation location
@@ -131,7 +144,10 @@ checkSource (threads, appType, sourceHash, location) = do
             , LBS.unpack app
             , newLocation
             ]
+        -- Already checked that `newAppType` is in `knownAppTypes`.
         ; (fst (knownAppTypes Map.! newAppType)) newLocation
+        -- Everything is OK, we should put everything back and leave a clean
+        -- state.
         ; putMVar appType newAppType
         ; putMVar sourceHash newSourceHash
         }
@@ -140,7 +156,7 @@ checkSource (threads, appType, sourceHash, location) = do
 -----
 -- (running instances -> requested instances -> should act?).
 
-cmpInstances :: (Int -> Int -> Bool) -> AppManagerMonadStack Bool
+cmpInstances :: (Int -> Int -> a) -> AppManagerMonadStack a
 cmpInstances f = do
     (host, port, app, _) <- get
     hdl <- iConnectTo host port
@@ -151,7 +167,8 @@ cmpInstances f = do
     running <- liftM length $ lGetLines hdl
     lClose hdl
     requested <- (liftM $ maybeRead . LBS.unpack) $ getProperty "instances"
-    when (isNothing requested) $ throwError "Expected a numeric value"
+    when (isNothing requested) $
+        throwError "Expected a numeric value (instances property)"
     return $ f running (fromJust requested)
 
 -----
@@ -166,12 +183,22 @@ cmpLoad f = do
 
 addInstance :: AppManagerState -> AppManagerMonadStack ()
 addInstance (threads, appType, _, location) = do
-    act1 <- cmpInstances (<)
+    -- a - running, b - requested instances.  Only run if there are less
+    -- instances than requested.
+    (act1, almostFull) <- cmpInstances
+        (\a b -> (a < b, a + Config.almostFull >= b))
+    -- Make sure this host is not overused.
     act2 <- cmpLoad (\a b -> a - b < 0.1)
     -- Can't run if there is no source.
     location' <- readMVar location
     let act3 = isJust location'
-    when (act1 && act2 && act3) $ do
+    -- If we are almost full then slow down.
+    act4 <- if almostFull
+        then do
+            (r :: Double) <- liftIO randomIO
+            return $ r < Config.almostFullSlowdown
+        else return True
+    when (act1 && act2 && act3 && act4) $ do
         (h, p, app, _) <- get
         appType' <- readMVar appType
         -- Pick a random port, if it's taken then this instance will get killed,
@@ -205,13 +232,13 @@ killInstance (threads, _, _, _) = do
     -- running.
     when (act1 || act2) $ do
         (_, _, app, _) <- get
-        iPrintLog $ "Killing an instance of " ++ (LBS.unpack app)
+        iPrintLog $ "Attempting to kill an instance of " ++ (LBS.unpack app)
         killOneThread threads
 
 -----
 -- Remove dead instances from list.  Instance can die if server subprocess died
--- or someone remove info about this instance from Miranda.  Use this only under
--- the big lock.
+-- or someone removed info about this instance from Miranda.  Use this only
+-- under the big lock.
 
 cleanInstances :: AppManagerState -> AppManagerMonadStack ()
 cleanInstances (mv, _, _, _) = do
@@ -240,35 +267,37 @@ getLoad :: AppManagerMonadStack (Double, Double)
 getLoad = do
     { (host, port, _, _) <- get
     ; hdl <- iConnectTo host port
-    ; lPutStrLn hdl "lookup all"
+    ; lPutStrLn hdl "lookup all with value"
     ; lPutStrLn hdl "host::load"
     ; lFlush hdl
-    ; hosts' <- lGetLines hdl
-    ; let hosts = map (LBS.append "host::load::") hosts'
-    ; values' <- forM hosts getValue
-    -- Some keys may have been unset between the `lookup all` call and now,
-    -- ignore them and use only the set values.
-    ; let values = catMaybes values' :: [Double]
-    ; let avg = if (null values)
-            then 0.0
-            else (sum values) / (fromIntegral $ length values)
-    ; self <- (liftM maybeRead) $ iReadProcess "Saffron/Load.py" []
-    ; when (isNothing self) $ throwError "Load.py didn't return a Double"
-    ; return (fromJust self, avg)
+    ; loads <- liftM (catMaybes . (map split) . takeEven) $ lGetLines hdl
+    ; lClose hdl
+    -- Discard old load entries, that hosts are probably down.
+    ; time <- getEpochTime
+    ; let recentLoads = snd $ unzip $
+            filter (\(t, _) -> time - t < Config.oldLoadTime) loads
+    ; self' <- (liftM maybeRead) $ iReadProcess "Saffron/Load.py" []
+    ; when (isNothing self') $ throwError "Load.py didn't return a Double"
+    ; let self = fromJust self'
+    ; let avg = if (null recentLoads)
+            then self -- There are no other hosts.
+            else (sum recentLoads) / (fromIntegral $ length recentLoads)
+    ; return (self, avg)
     }
     where
-        getValue :: MaybeRead a => LBS.ByteString -> AppManagerMonadStack (Maybe a)
-        getValue key = do
-            (host, port, _, _) <- get
-            hdl <- iConnectTo host port
-            lPutStrLn hdl "lookup"
-            lPutStrLn hdl key
-            lFlush hdl
-            v <- lGetLine hdl
-            if (v == "Nothing")
-                then return Nothing
-                -- Drop the "Just "
-                else return $ maybeRead $ LBS.unpack (LBS.drop 5 v)
+        takeEven :: [a] -> [a]
+        takeEven l = takeEven' l False []
+
+        takeEven' [] _ l = reverse l
+        takeEven' (_:t) False l = takeEven' t True l
+        takeEven' (h:t) True l = takeEven' t False (h:l)
+
+        -- Separate setting time and host load.
+        split :: LBS.ByteString -> Maybe (Int, Double)
+        split s = do
+            t <- maybeRead $ LBS.unpack $ LBS.takeWhile (/= ':') s
+            l <- maybeRead $ LBS.unpack $ LBS.tail $ LBS.dropWhile (/= ':') s
+            return (t, l)
 
 -----
 -- Use this only under the big lock.
@@ -341,7 +370,7 @@ killThread :: (MVar (), MVar Int) -> AppManagerMonadStack ()
 killThread t = do
     -- Use non blocking version in case something else killed this thread.
     tryPutMVar (fst t) ()
-    port <- takeMVar (snd t)
+    port <- readMVar (snd t)
 
     -- Notify Miranda.
     (h, p, app, _) <- get

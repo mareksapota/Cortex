@@ -64,7 +64,8 @@ set key value (ValueStorage (vt, cl)) = do
 
 -----
 
-delete :: (MonadIO m) => BS.ByteString -> ValueStorage -> m ValueStorage
+delete :: (MonadIO m, MonadError String m) =>
+    BS.ByteString -> ValueStorage -> m ValueStorage
 delete key (ValueStorage (vt, cl)) = do
     c <- Commit.delete key
     let vt' = VT.delete key vt

@@ -25,4 +25,4 @@ storageTime = 60.0
 
 -- Should Miranda print logs to stderr?  Logs will decrease performance.
 writeLog :: Bool
-writeLog = False
+writeLog = True
