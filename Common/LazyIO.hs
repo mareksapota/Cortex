@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts, OverloadedStrings, Rank2Types #-}
+{-# LANGUAGE FlexibleContexts, OverloadedStrings, Rank2Types, ScopedTypeVariables #-}
 
 module Cortex.Common.LazyIO
     ( LazyHandle
@@ -21,8 +21,16 @@ module Cortex.Common.LazyIO
 import Control.Monad (when)
 import Control.Monad.Error (MonadError, throwError)
 import Control.Monad.Trans (liftIO, MonadIO)
+import Control.Exception (try, SomeException)
 import qualified Data.ByteString.Lazy.Char8 as LBS
-import System.IO
+import qualified Data.ByteString.Char8 as BS
+import Data.ByteString (hGetSome)
+import Data.ByteString.Lazy.Internal
+    ( ByteString (Chunk, Empty)
+    , defaultChunkSize
+    )
+import System.IO hiding (hGetContents)
+import System.IO.Unsafe (unsafeInterleaveIO)
 import Data.IORef
 
 import Cortex.Common.IOReport
@@ -39,13 +47,31 @@ data LazyHandle =
 type EIO m a = (MonadError String m, MonadIO m) => m a
 
 -----
+-- Same as `LBS.hGetContents`, but ignores exceptions.
+
+hGetContents :: Handle -> IO LBS.ByteString
+hGetContents h = lazyRead
+    where
+        lazyRead = unsafeInterleaveIO loop
+
+        loop = do
+            t <- try $ hGetSome h defaultChunkSize
+            case t of
+                Left (_ :: SomeException) -> do hClose h >> return Empty
+                Right c -> if BS.null c
+                    then do hClose h >> return Empty
+                    else do
+                        cs <- lazyRead
+                        return (Chunk c cs)
+
+-----
 -- Returns a lazy handle capable of reading and writing.  Can be used for
 -- sockets.
 
 lConvert :: Handle -> EIO m LazyHandle
 lConvert hdl = do
     -- If the handle is closed this will fail sometime later.
-    content <- ioReport $ LBS.hGetContents hdl
+    content <- ioReport $ hGetContents hdl
     ref <- liftIO $ newIORef content
     return $ RWHandle ref hdl
 
@@ -64,7 +90,7 @@ lOpenFile' path mode = do
     where
         chooseMode ReadMode hdl = do
             -- If the handle is closed this will fail sometime later.
-            content <- ioReport $ LBS.hGetContents hdl
+            content <- ioReport $ hGetContents hdl
             ref <- liftIO $ newIORef content
             return $ ReadHandle ref
         chooseMode WriteMode hdl = return $ WriteHandle hdl
