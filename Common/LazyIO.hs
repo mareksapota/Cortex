@@ -106,7 +106,9 @@ lClose (WriteHandle hdl) = ioReport $ hClose hdl
 -- Don't actually call `hClose` on the handle, all subsequent reads will fail
 -- and since the IO is lazy reads that appear in code before `lClose` might
 -- actually happen after.
-lClose (RWHandle ref _) = lClose $ ReadHandle ref
+lClose (RWHandle ref hdl) = do
+    lClose $ ReadHandle ref
+    lFlush hdl
 
 -----
 
