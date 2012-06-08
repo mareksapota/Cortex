@@ -108,7 +108,7 @@ lClose (WriteHandle hdl) = ioReport $ hClose hdl
 -- actually happen after.
 lClose (RWHandle ref hdl) = do
     lClose $ ReadHandle ref
-    lFlush hdl
+    lFlush $ WriteHandle hdl
 
 -----
 
