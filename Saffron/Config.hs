@@ -7,7 +7,7 @@ managerUpdateTime :: Double
 managerUpdateTime = 1.0
 
 instanceDeleteTime :: Double
-instanceDeleteTime = 10.0
+instanceDeleteTime = 5.0
 
 -- Hosts that haven't updated their load in this many seconds will be considered
 -- dead.
