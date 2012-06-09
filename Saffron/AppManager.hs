@@ -145,7 +145,9 @@ checkSource (threads, appType, sourceHash, location) = do
             , newLocation
             ]
         -- Already checked that `newAppType` is in `knownAppTypes`.
+        ; iPrintLog $ "Preparing application: " ++ (LBS.unpack app)
         ; (fst (knownAppTypes Map.! newAppType)) newLocation
+        ; iPrintLog $ "Application prepared: " ++ (LBS.unpack app)
         -- Everything is OK, we should put everything back and leave a clean
         -- state.
         ; putMVar appType newAppType
