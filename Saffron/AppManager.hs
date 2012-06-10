@@ -30,6 +30,7 @@ import qualified Cortex.Saffron.Config as Config
 
 import qualified Cortex.Saffron.Apps.Static as AppStatic
 import qualified Cortex.Saffron.Apps.Rails as AppRails
+import qualified Cortex.Saffron.Apps.RailsDev as AppRailsDev
 import qualified Cortex.Saffron.Apps.PHP as AppPHP
 
 -----
@@ -42,6 +43,7 @@ knownAppTypes :: Map LBS.ByteString
 knownAppTypes = Map.fromList
     [ ("static", (AppStatic.prepare, AppStatic.run))
     , ("rails", (AppRails.prepare, AppRails.run))
+    , ("railsdev", (AppRailsDev.prepare, AppRailsDev.run))
     , ("php", (AppPHP.prepare, AppPHP.run))
     ]
 
