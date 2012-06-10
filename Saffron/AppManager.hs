@@ -30,6 +30,7 @@ import qualified Cortex.Saffron.Config as Config
 
 import qualified Cortex.Saffron.Apps.Static as AppStatic
 import qualified Cortex.Saffron.Apps.Rails as AppRails
+import qualified Cortex.Saffron.Apps.PHP as AppPHP
 
 -----
 
@@ -41,6 +42,7 @@ knownAppTypes :: Map LBS.ByteString
 knownAppTypes = Map.fromList
     [ ("static", (AppStatic.prepare, AppStatic.run))
     , ("rails", (AppRails.prepare, AppRails.run))
+    , ("php", (AppPHP.prepare, AppPHP.run))
     ]
 
 -----
@@ -138,6 +140,7 @@ checkSource (threads, appType, sourceHash, location) = do
         -- If this operation throws an error, the state will still be consistent
         -- (although it will be dirty) since app type and source hash will be
         -- missing.
+        ; iPrintLog $ "Downloading applicaiton source : " ++ (LBS.unpack app)
         ; iRawSystem "Saffron/GetSource.py"
             [ host
             , show port
