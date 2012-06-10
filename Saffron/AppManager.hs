@@ -31,6 +31,8 @@ import qualified Cortex.Saffron.Config as Config
 import qualified Cortex.Saffron.Apps.Static as AppStatic
 import qualified Cortex.Saffron.Apps.Rails as AppRails
 import qualified Cortex.Saffron.Apps.RailsDev as AppRailsDev
+import qualified Cortex.Saffron.Apps.DjangoDev as AppDjangoDev
+import qualified Cortex.Saffron.Apps.YesodDev as AppYesodDev
 import qualified Cortex.Saffron.Apps.PHP as AppPHP
 
 -----
@@ -44,6 +46,8 @@ knownAppTypes = Map.fromList
     [ ("static", (AppStatic.prepare, AppStatic.run))
     , ("rails", (AppRails.prepare, AppRails.run))
     , ("railsdev", (AppRailsDev.prepare, AppRailsDev.run))
+    , ("djangodev", (AppDjangoDev.prepare, AppDjangoDev.run))
+    , ("yesoddev", (AppYesodDev.prepare, AppYesodDev.run))
     , ("php", (AppPHP.prepare, AppPHP.run))
     ]
 
