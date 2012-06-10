@@ -55,6 +55,8 @@ run port location = do
         [ "start"
         , "--port"
         , show port
+        , "--max-pool-size"
+        , "1"
         ] path env
 
 -----

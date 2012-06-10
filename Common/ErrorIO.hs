@@ -24,6 +24,7 @@ import System.IO
 import Network
 import qualified Data.ByteString.Lazy.Char8 as LBS
 import Data.Binary (encode, decode, Binary)
+import Data.Maybe (isNothing, fromJust)
 import System.Process (rawSystem, readProcess, runProcess, ProcessHandle)
 import System.Exit (ExitCode (ExitSuccess, ExitFailure))
 
@@ -105,7 +106,13 @@ iRunProcess :: (MonadError String m, MonadIO m) => String -> [String] ->
 iRunProcess cmd args location env = ioReport $ do
     input <- openFile "/dev/null" ReadMode
     output <- openFile "/dev/null" WriteMode
-    runProcess cmd args location env (Just input) (Just output) Nothing
+    let loc = if isNothing location
+        then "/"
+        else fromJust location
+    -- Use the Python wrapper, so `terminateProcess` sends a SIGKILL to the
+    -- process instead of the default SIGTERM.
+    runProcess "./Common/runprocess.py" (loc:cmd:args) Nothing env
+        (Just input) (Just output) Nothing
 
 -----
 

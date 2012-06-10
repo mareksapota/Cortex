@@ -48,7 +48,7 @@ runManager' = do
 
 updateManager :: ManagerMonadStack ()
 updateManager = do
-    { iPrintLog "Looking for new apps"
+    { -- iPrintLog "Looking for new apps"
     ; (mi, _) <- get
     ; hdl <- mirandaConnect mi
     ; lPutStrLn hdl "lookup all"

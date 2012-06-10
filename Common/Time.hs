@@ -11,7 +11,7 @@ import qualified Data.Time.Format as F
 import Data.Time.Clock (getCurrentTime)
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import System.Locale (defaultTimeLocale)
-import Control.Monad.Trans (MonadIO, liftIO)
+import Control.Monad.Trans (MonadIO)
 import Control.Monad.Error (MonadError)
 
 import Cortex.Common.IOReport

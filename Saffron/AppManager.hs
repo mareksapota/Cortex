@@ -220,7 +220,6 @@ addInstance (threads, appType, _, location) = do
         iPrintLog $ "Running a new instance of " ++ (LBS.unpack app) ++
             " on port " ++ (show port)
         a <- (snd (knownAppTypes Map.! appType')) port (fromJust location')
-        addThread a threads
         -- Notify Miranda.
         hdl <- mirandaConnect mi
         lPutStrLn hdl "set"
@@ -234,6 +233,7 @@ addInstance (threads, appType, _, location) = do
             ]
         lPutStrLn hdl "online"
         lClose hdl
+        addThread a threads
 
 -----
 

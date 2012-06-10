@@ -47,9 +47,9 @@ test = True
 clean = False
 # Compiler flags.
 flags = [
-    # Enable multithreading.
+    # Enable multithreading and increase the stack size.
     '-threaded',
-    '-with-rtsopts="-N"',
+    '-with-rtsopts="-N -K100M"',
     # Enable warning messages.
     '-Wall',
     '-fno-warn-unused-do-bind'
@@ -75,7 +75,7 @@ def build():
         # Clean things made by a previous build.
         for e in executables:
             run("rm -f '{0}'".format(e))
-        run('rm -f **/*.o **/*.hi')
+        run('rm -f **/*.o(N) **/*.hi(N) **/*.pyc(N) **/*.pyo(N)')
     else:
         # Build chosen executables.
         for e in executables:

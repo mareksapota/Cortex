@@ -29,8 +29,8 @@ prepare _ = return ()
 run :: Int -> String -> AppManagerMonadStack (MVar (), MVar Int)
 run port location = do
     env <- makeEnv
-    Common.run port "thin"
-        [ "start"
+    Common.run port "rails"
+        [ "server"
         , "--port"
         , show port
         ] (Just $ location ++ "/repo") env

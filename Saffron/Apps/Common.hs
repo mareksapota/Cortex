@@ -37,7 +37,7 @@ run port cmd args location env = do
         ; fork $ do
             { takeMVar stop
             ; iPrintLog $ concat
-                [ "Sending SIGTERM to "
+                [ "Sending SIGKILL to "
                 , LBS.unpack app
                 , " instance running on port "
                 , show port
