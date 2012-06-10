@@ -19,15 +19,16 @@ import qualified Data.ByteString.Lazy.Char8 as LBS
 
 import Cortex.Saffron.GrandMonadStack
 import qualified Cortex.Saffron.Config as Config
-import Cortex.Common.ErrorIO (iRunProcess, iPrintLog, iConnectTo)
+import Cortex.Common.ErrorIO (iRunProcess, iPrintLog)
 import Cortex.Common.LazyIO
+import Cortex.Common.Miranda
 
 -----
 
 run :: Int -> String -> [String] -> Maybe String -> Maybe [(String, String)] ->
     AppManagerMonadStack (MVar (), MVar Int)
 run port cmd args location env = do
-    (_, _, app, _) <- get
+    (_, app, _) <- get
     stop <- newEmptyMVar
     finished <- newEmptyMVar
     fork $ do
@@ -71,7 +72,7 @@ run port cmd args location env = do
 
 amIAlive :: Int -> AppManagerMonadStack Bool
 amIAlive port = do
-    { (h, p, app, _) <- get
+    { (mi, app, _) <- get
     ; let key = LBS.concat
             [ "app::instance::"
             , app
@@ -80,7 +81,7 @@ amIAlive port = do
             , ":"
             , LBS.pack $ show port
             ]
-    ; hdl <- iConnectTo h p
+    ; hdl <- mirandaConnect mi
     ; lPutStrLn hdl "lookup"
     ; lPutStrLn hdl key
     ; lFlush hdl

@@ -11,12 +11,13 @@ import Control.Monad.Error (ErrorT)
 import Data.Set (Set)
 import qualified Data.ByteString.Lazy.Char8 as LBS
 
+import Cortex.Common.Miranda
+
 type LesserMonadStack = ErrorT String IO
 
 -- State holds Miranda host, port and set of already known apps.
 type ManagerMonadStack = StateT
-    ( String
-    , Int
+    ( MirandaInfo
     , MVar (Set LBS.ByteString)
     ) LesserMonadStack
 
@@ -31,8 +32,7 @@ type AppManagerState =
     )
 
 type AppManagerMonadStack = StateT
-    ( String
-    , Int
+    ( MirandaInfo
     , LBS.ByteString
     , MVar AppManagerState
     ) LesserMonadStack

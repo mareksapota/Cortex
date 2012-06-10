@@ -19,7 +19,6 @@ import Control.Monad.Trans (liftIO)
 import qualified Cortex.Common.Sha1 as Sha1
 import Cortex.Common.ErrorIO
     ( iOpenTempFile
-    , iConnectTo
     , iReadFile
     , iWriteFile
     , iPrintLog
@@ -29,6 +28,7 @@ import Cortex.Common.LazyIO
 import Cortex.Common.Error
 import Cortex.Common.Event
 import Cortex.Ariel.GrandMonadStack
+import Cortex.Common.Miranda
 import qualified Cortex.Ariel.Config as Config
 
 -----
@@ -38,13 +38,15 @@ runProxy host port = do
     -- TODO: This file is never cleaned up when Ariel is killed by a signal.
     (path, hdl) <- iOpenTempFile "/tmp" "nginx.conf"
     lClose hdl
-    evalStateT runProxy' (host, port, path, "")
+    mi <- newMirandaInfo host port
+    mirandaUpdateInfo mi
+    evalStateT runProxy' (mi, path, "")
 
 -----
 
 runProxy' :: GrandMonadStack ()
 runProxy' = do
-    (_, _, path, _) <- get
+    (_, path, _) <- get
     emptyConf <- makeConf Map.empty
     iWriteFile path emptyConf
     liftIO $ runCommand ("nginx -c " ++ path)
@@ -55,14 +57,14 @@ runProxy' = do
 
 updateProxy :: GrandMonadStack ()
 updateProxy = do
-    { (host, port, path, oldHash) <- get
-    ; hdl <- iConnectTo host port
+    { (mi, path, oldHash) <- get
+    ; hdl <- mirandaConnect mi
     ; lPutStrLn hdl "lookup all"
     ; lPutStrLn hdl "app::instance"
     ; lFlush hdl
     ; instances <- lGetContents hdl
     ; lClose hdl
-    ; hdl' <- iConnectTo host port
+    ; hdl' <- mirandaConnect mi
     ; lPutStrLn hdl' "lookup all with value"
     ; lPutStrLn hdl' "app::port"
     ; lFlush hdl'
@@ -72,7 +74,7 @@ updateProxy = do
     ; let hash2 = Sha1.lhash ports
     ; let hash = Sha1.hash (BS.concat [hash1, hash2])
     ; when (hash /= oldHash) $ reload (LBS.lines instances)
-    ; put (host, port, path, hash)
+    ; put (mi, path, hash)
     } `catchError` reportError
 
 -----
@@ -82,7 +84,7 @@ reload instances = do
     { iPrintLog "Instance change detected, reloading"
     ; let apps = makeApps instances Map.empty
     ; conf <- makeConf apps
-    ; (_, _, path, _) <- get
+    ; (_, path, _) <- get
     ; iWriteFile path conf
     ; pid <- (liftM $ LBS.takeWhile (/= '\n')) $ iReadFile (path ++ ".pid")
     ; iRawSystem "kill" ["-HUP", LBS.unpack pid]
@@ -103,7 +105,7 @@ makeApps (h:t) m = do
 
 makeConf :: Map LBS.ByteString [LBS.ByteString] -> GrandMonadStack LBS.ByteString
 makeConf apps = do
-    (_, _, path, _) <- get
+    (_, path, _) <- get
     configs <- mapM (makeAppConf apps) (Map.keys apps)
     return $ LBS.unlines
         [ "error_log /dev/null;"
@@ -122,8 +124,8 @@ makeConf apps = do
         makeAppConf :: Map LBS.ByteString [LBS.ByteString] ->
             LBS.ByteString -> GrandMonadStack LBS.ByteString
         makeAppConf m app = do
-            { (host, port, _, _) <- get
-            ; hdl <- iConnectTo host port
+            { (mi, _, _) <- get
+            ; hdl <- mirandaConnect mi
             ; lPutStrLn hdl "lookup"
             ; lPutStrLn hdl $ LBS.concat ["app::port::", app]
             ; lFlush hdl

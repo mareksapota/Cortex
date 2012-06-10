@@ -15,20 +15,23 @@ import Control.Concurrent.Lifted
 import qualified Data.ByteString.Lazy.Char8 as LBS
 
 import Cortex.Common.Event
-import Cortex.Common.ErrorIO (iPrintLog, iConnectTo, iReadProcess)
+import Cortex.Common.ErrorIO (iPrintLog, iReadProcess)
 import Cortex.Common.LazyIO
 import Cortex.Common.Error
 import Cortex.Common.Time
 import Cortex.Saffron.GrandMonadStack
 import qualified Cortex.Saffron.Config as Config
 import Cortex.Saffron.AppManager (runAppManager)
+import Cortex.Common.Miranda
 
 -----
 
 runManager :: String -> Int -> LesserMonadStack ()
 runManager host port = do
     s <- newMVar Set.empty
-    evalStateT runManager' (host, port, s)
+    mi <- newMirandaInfo host port
+    mirandaUpdateInfo mi
+    evalStateT runManager' (mi, s)
 
 -----
 
@@ -46,8 +49,8 @@ runManager' = do
 updateManager :: ManagerMonadStack ()
 updateManager = do
     { iPrintLog "Looking for new apps"
-    ; (host, port, _) <- get
-    ; hdl <- iConnectTo host port
+    ; (mi, _) <- get
+    ; hdl <- mirandaConnect mi
     ; lPutStrLn hdl "lookup all"
     ; lPutStrLn hdl "app::type"
     ; lFlush hdl
@@ -74,8 +77,8 @@ updateLoad :: ManagerMonadStack ()
 updateLoad = do
     { load <- iReadProcess "Saffron/Load.py" []
     ; time <- getEpochTime
-    ; (host, port, _) <- get
-    ; hdl <- iConnectTo host port
+    ; (mi, _) <- get
+    ; hdl <- mirandaConnect mi
     ; lPutStrLn hdl "set"
     ; lPutStr hdl "host::load::"
     ; lPutStrLn hdl $ LBS.pack Config.host
@@ -89,7 +92,7 @@ updateLoad = do
 
 getApps :: ManagerMonadStack (Set LBS.ByteString)
 getApps = do
-    (_, _, mv) <- get
+    (_, mv) <- get
     apps <- readMVar mv
     return apps
 
@@ -97,7 +100,7 @@ getApps = do
 
 addApp :: LBS.ByteString -> ManagerMonadStack ()
 addApp app = do
-    (_, _, mv) <- get
+    (_, mv) <- get
     apps <- takeMVar mv
     putMVar mv $ Set.insert app apps
 
@@ -105,7 +108,7 @@ addApp app = do
 
 removeApp :: LBS.ByteString -> ManagerMonadStack ()
 removeApp app = do
-    (_, _, mv) <- get
+    (_, mv) <- get
     apps <- takeMVar mv
     putMVar mv $ Set.delete app apps
 

@@ -20,12 +20,13 @@ import Data.Maybe (catMaybes, fromJust, isNothing, isJust)
 import System.Random (randomRIO, randomIO)
 
 import Cortex.Saffron.GrandMonadStack
-import Cortex.Common.ErrorIO (iPrintLog, iConnectTo, iRawSystem, iReadProcess)
+import Cortex.Common.ErrorIO (iPrintLog, iRawSystem, iReadProcess)
 import Cortex.Common.LazyIO
 import Cortex.Common.Error
 import Cortex.Common.Event
 import Cortex.Common.MaybeRead
 import Cortex.Common.Time
+import Cortex.Common.Miranda
 import qualified Cortex.Saffron.Config as Config
 
 import qualified Cortex.Saffron.Apps.Static as AppStatic
@@ -55,7 +56,7 @@ knownAppTypes = Map.fromList
 
 runAppManager :: LBS.ByteString -> ManagerMonadStack ()
 runAppManager app = do
-    (host, port, _) <- get
+    (mi, _) <- get
     -- Application threads.
     a <- newMVar []
     -- Application type.
@@ -65,11 +66,11 @@ runAppManager app = do
     -- Storage location.
     d <- newMVar Nothing
     mv <- newMVar (a, b, c, d)
-    lift $ evalStateT runAppManager' (host, port, app, mv)
+    lift $ evalStateT runAppManager' (mi, app, mv)
 
 runAppManager' :: AppManagerMonadStack ()
 runAppManager' = do
-    { (_, _, app, mv) <- get
+    { (_, app, mv) <- get
     ; iPrintLog $ "Running app manager for a new app: " ++ (LBS.unpack app)
     ; lock <- newEmptyMVar
     ; t1 <- addTimer lock Config.managerUpdateTime checkSource
@@ -96,7 +97,7 @@ addTimer :: MVar () -> Double ->
     (AppManagerState -> AppManagerMonadStack ()) ->
     AppManagerMonadStack TimerHandle
 addTimer lock t s = periodicTimer t $ do
-    (_, _, _, mv) <- get
+    (_, _, mv) <- get
     -- Take the big lock, make sure only one timer is running.
     (a, b, c, d) <- takeMVar mv
     isDirty <- dirty a b c d
@@ -133,7 +134,7 @@ checkSource (threads, appType, sourceHash, location) = do
     ; newSourceHash <- getPropertyHash "source"
     ; sourceHash' <- readMVar sourceHash
     ; when ((appType' /= newAppType) || (sourceHash' /= newSourceHash)) $ do
-        { (host, port, app, _) <- get
+        { (mi, app, _) <- get
         ; iPrintLog $ "Reloading app manager: " ++ (LBS.unpack app)
         ; killAllThreads threads
         ; removeLocation location
@@ -147,6 +148,7 @@ checkSource (threads, appType, sourceHash, location) = do
         -- (although it will be dirty) since app type and source hash will be
         -- missing.
         ; iPrintLog $ "Downloading applicaiton source : " ++ (LBS.unpack app)
+        ; (host, port) <- getWorkingMirandaInfo mi
         ; iRawSystem "Saffron/GetSource.py"
             [ host
             , show port
@@ -169,8 +171,8 @@ checkSource (threads, appType, sourceHash, location) = do
 
 cmpInstances :: (Int -> Int -> a) -> AppManagerMonadStack a
 cmpInstances f = do
-    (host, port, app, _) <- get
-    hdl <- iConnectTo host port
+    (mi, app, _) <- get
+    hdl <- mirandaConnect mi
     lPutStrLn hdl "lookup all"
     lPutStr hdl "app::instance::"
     lPutStrLn hdl app
@@ -210,7 +212,7 @@ addInstance (threads, appType, _, location) = do
             return $ r < Config.almostFullSlowdown
         else return True
     when (act1 && act2 && act3 && act4) $ do
-        (h, p, app, _) <- get
+        (mi, app, _) <- get
         appType' <- readMVar appType
         -- Pick a random port, if it's taken then this instance will get killed,
         -- but it's OK, another one will take it's place.
@@ -220,7 +222,7 @@ addInstance (threads, appType, _, location) = do
         a <- (snd (knownAppTypes Map.! appType')) port (fromJust location')
         addThread a threads
         -- Notify Miranda.
-        hdl <- iConnectTo h p
+        hdl <- mirandaConnect mi
         lPutStrLn hdl "set"
         lPutStrLn hdl $ LBS.concat
             [ "app::instance::"
@@ -242,7 +244,7 @@ killInstance (threads, _, _, _) = do
     -- Overloaded node (let someone else run an instance), or too much instances
     -- running.
     when (act1 || act2) $ do
-        (_, _, app, _) <- get
+        (_, app, _) <- get
         iPrintLog $ "Attempting to kill an instance of " ++ (LBS.unpack app)
         killOneThread threads
 
@@ -276,8 +278,8 @@ cleanInstances' (t:rest) l = do
 
 getLoad :: AppManagerMonadStack (Double, Double)
 getLoad = do
-    { (host, port, _, _) <- get
-    ; hdl <- iConnectTo host port
+    { (mi, _, _) <- get
+    ; hdl <- mirandaConnect mi
     ; lPutStrLn hdl "lookup all with value"
     ; lPutStrLn hdl "host::load"
     ; lFlush hdl
@@ -336,7 +338,7 @@ makeNewLocation mv = do
     when dirty $ throwError "Dirty state encountered"
     location <- takeMVar mv
     when (isJust location) $ throwError "Location is not empty"
-    (_, _, app, _) <- get
+    (_, app, _) <- get
     dir <- liftIO $ createTempDirectory "/tmp" ((LBS.unpack app) ++ ".source.")
     putMVar mv (Just dir)
     return dir
@@ -384,8 +386,8 @@ killThread t = do
     port <- readMVar (snd t)
 
     -- Notify Miranda.
-    (h, p, app, _) <- get
-    hdl <- iConnectTo h p
+    (mi, app, _) <- get
+    hdl <- mirandaConnect mi
     lPutStrLn hdl "delete"
     lPutStrLn hdl $ LBS.concat
         [ "app::instance::"
@@ -440,9 +442,9 @@ getPropertyHash property = do
 getPropertyCommon :: LBS.ByteString -> LBS.ByteString ->
     AppManagerMonadStack LBS.ByteString
 getPropertyCommon property command = do
-    (host, port, app, _) <- get
+    (mi, app, _) <- get
     let key = LBS.concat ["app::", property, "::", app]
-    hdl <- iConnectTo host port
+    hdl <- mirandaConnect mi
     lPutStrLn hdl command
     lPutStrLn hdl key
     lFlush hdl

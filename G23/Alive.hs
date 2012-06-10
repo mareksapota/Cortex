@@ -16,11 +16,15 @@ import Cortex.Common.LazyIO
 import Cortex.Common.Error
 import Cortex.Common.Event
 import Cortex.Common.MaybeRead
+import Cortex.Common.Miranda
 
 -----
 
 runAlive :: String -> Int -> LesserMonadStack ()
-runAlive host port = evalStateT runAlive' (host, port)
+runAlive host port = do
+    mi <- newMirandaInfo host port
+    mirandaUpdateInfo mi
+    evalStateT runAlive' mi
 
 runAlive' :: GrandMonadStack ()
 runAlive' = do
@@ -31,8 +35,8 @@ runAlive' = do
 
 aliveCheck :: GrandMonadStack ()
 aliveCheck = do
-    { (host, port) <- get
-    ; hdl <- iConnectTo host port
+    { mi <- get
+    ; hdl <- mirandaConnect mi
     ; lPutStrLn hdl "lookup all"
     ; lPutStrLn hdl "app::instance"
     ; lFlush hdl
@@ -70,10 +74,10 @@ connect host port = do
 remove :: LBS.ByteString -> GrandMonadStack ()
 remove i = do
     { let key = LBS.concat ["app::instance::", i]
-    ; (host, port) <- get
+    ; mi <- get
     -- Do a lookup first, we don't want to notify the user if the instance is
     -- already dead, for example killed by another G23 thread.
-    ; hdl <- iConnectTo host port
+    ; hdl <- mirandaConnect mi
     ; lPutStrLn hdl "lookup"
     ; lPutStrLn hdl key
     ; lFlush hdl
@@ -85,8 +89,8 @@ remove i = do
 
 remove' :: LBS.ByteString -> GrandMonadStack ()
 remove' key = do
-    { (host, port) <- get
-    ; hdl <- iConnectTo host port
+    { mi <- get
+    ; hdl <- mirandaConnect mi
     ; lPutStrLn hdl "delete"
     ; lPutStrLn hdl key
     ; lFlush hdl
