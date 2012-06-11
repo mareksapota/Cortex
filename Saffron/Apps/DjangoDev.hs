@@ -21,7 +21,7 @@ run :: Int -> String -> AppManagerMonadStack (MVar (), MVar Int)
 run port location = Common.run port "python"
     [ "manage.py"
     , "runserver"
-    , show port
+    , "0.0.0.0:" ++ (show port)
     ] (Just $ location ++ "/repo") Nothing
 
 -----
