@@ -1,0 +1,42 @@
+#!/usr/bin/env python
+
+from __future__ import print_function
+
+import signal
+import subprocess
+import sys
+import os
+import random
+import time
+
+# Restart every 6h +- 50%.
+restart_every = 60 * 60 * 6
+
+args = ['./Miranda/miranda_proper']
+args.extend(sys.argv[1:])
+
+p = None
+
+def signal_handler(singnal, frame):
+    if p is not None:
+        os.killpg(p.pid, signal.SIGKILL)
+        p.wait()
+    sys.exit(0)
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
+
+def run():
+    global p
+    if p is not None:
+        print("Restarting Miranda process.")
+        os.killpg(p.pid, signal.SIGKILL)
+        p.wait()
+    p = subprocess.Popen(args, preexec_fn = os.setsid)
+
+run()
+
+while True:
+    k = random.randint(0, restart_every)
+    t = int(restart_every / 2) + k
+    time.sleep(t)
+    run()

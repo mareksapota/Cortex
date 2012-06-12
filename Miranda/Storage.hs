@@ -12,6 +12,7 @@ module Cortex.Miranda.Storage
     , Cortex.Miranda.Storage.show
     , Cortex.Miranda.Storage.read
     , squash
+    , cleanup
     , getSquashTime
     , setSquashTime
     , updateSquashTime
@@ -29,6 +30,7 @@ import qualified Data.ByteString.Char8 as BS
 import Cortex.Miranda.ValueStorage (ValueStorage)
 import qualified Cortex.Miranda.ValueStorage as VS
 import Cortex.Miranda.Commit (Commit)
+import qualified Cortex.Miranda.Commit as C
 import Cortex.Miranda.GrandMonadStack
 import Cortex.Common.ErrorIO
 import Cortex.Common.Time
@@ -199,5 +201,19 @@ updateSquashTime :: GrandMonadStack ()
 updateSquashTime = do
     time <- getBigEndianTimestamp
     setSquashTime time
+
+-----
+
+cleanup :: GrandMonadStack ()
+cleanup = do
+    vs <- readVS
+    let c = filter C.isSet $ VS.getCommits vs
+    storage <- get
+    -- Drop the storage path.
+    l <- mapM
+        ( (liftM $ reverse . (takeWhile (/= '/')) . reverse)
+        . C.getLocation
+        ) c
+    iRawSystem "Miranda/cleanup.py" (storage:l)
 
 -----

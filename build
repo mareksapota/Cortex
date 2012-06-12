@@ -11,7 +11,7 @@ import subprocess
 # Build targets.  Modify this section to build new executables.
 targets = {
     'miranda' : {
-        'main' : 'Miranda/miranda',
+        'main' : 'Miranda/miranda_proper',
         'test' : [
             'Miranda/test/ValueTree_Test',
             'Miranda/test/Commit_Test',

@@ -12,6 +12,7 @@ module Cortex.Miranda.Commit
     , isSet
     , toString
     , fromString
+    , getLocation
     ) where
 
 import Cortex.Miranda.CommitRaw

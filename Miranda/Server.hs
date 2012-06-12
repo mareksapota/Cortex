@@ -42,6 +42,11 @@ type ConnectedMonadStack = StateT (LazyHandle, String, Int) GrandMonadStack
 runServer :: Int -> GrandMonadStack ()
 runServer serverPort = do
     readValueStorage
+    -- Only commit instances are in the value storage now so we can remove
+    -- everything that isn't.
+    iPrintLog "Removing not used files from storage."
+    S.cleanup
+    iPrintLog "Storage cleanup done."
     periodicTimer Config.storageTime saveValueStorage
     socket <- iListenOn serverPort
     printLocalLog $ "Server started on port " ++ (show serverPort)

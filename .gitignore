@@ -1,7 +1,7 @@
 *.o
 *.hi
 *.py[co]
-Miranda/miranda
+Miranda/miranda_proper
 Miranda/test/Commit_Test
 Miranda/test/CommitList_Test
 Miranda/test/ValueTree_Test
