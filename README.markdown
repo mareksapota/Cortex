@@ -1,3 +1,11 @@
+# Licensing
+
+As of 04/25/2026 this project has been relicensed and is now dual licensed under
+the MIT Expat license, or the previous GNU Affero General Public License 3+, at
+your choice.
+
+# README
+
 This README is quite lacking, but I don’t have time to write anything better
 right now=)
 
